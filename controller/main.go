@@ -302,6 +302,24 @@ func main() {
 	if sup, ok := newSupervisor(); ok {
 		s.sup = sup
 		log.Printf("supervisor mode ENABLED (llama-server=%s model=%s)", sup.llamaServer, sup.model)
+
+		// Proactive dead-node monitor: probes active RPC workers and rebuilds the
+		// pipeline over survivors the moment one dies. healthyFn prefers the live
+		// registry; if empty (explicit-workers mode), it filters the configured
+		// workers by TCP reachability.
+		healthyFn := func() []string {
+			if eps := s.reg.healthyRPCEndpoints(); len(eps) > 0 {
+				return eps
+			}
+			var alive []string
+			for _, ep := range sup.activeWorkers() {
+				if probeAlive(ep, 2*time.Second) {
+					alive = append(alive, ep)
+				}
+			}
+			return alive
+		}
+		go sup.monitorWorkers(healthyFn)
 		// If explicit RPC workers were provided, launch the split pipeline now.
 		// Otherwise it launches lazily on the first /infer once workers register.
 		if len(sup.rpcWorkers) > 0 {

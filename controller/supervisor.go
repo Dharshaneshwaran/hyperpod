@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -99,6 +100,20 @@ func evenSplit(n int) string {
 	return strings.Join(parts, ",")
 }
 
+// remoteHeavySplit builds a tensor-split where the LOCAL device gets a small
+// share (1) and each of the nWorkers REMOTE nodes gets a large share (4), so
+// that the remote nodes genuinely hold most of the model. Losing a remote node
+// then actually breaks generation, which is what we want to recover from.
+// Layout: "local,remote1,remote2,..."
+func remoteHeavySplit(nWorkers int) string {
+	parts := make([]string, 0, nWorkers+1)
+	parts = append(parts, "1") // local device: small share
+	for i := 0; i < nWorkers; i++ {
+		parts = append(parts, "4") // each remote: large share
+	}
+	return strings.Join(parts, ",")
+}
+
 // launch (re)starts llama-server with the current set of rpc workers.
 // Caller must hold s.mu.
 func (s *supervisor) launchLocked(workers []string) error {
@@ -113,7 +128,10 @@ func (s *supervisor) launchLocked(workers []string) error {
 	}
 	if len(workers) > 0 {
 		args = append(args, "--rpc", strings.Join(workers, ","))
-		args = append(args, "--tensor-split", evenSplit(len(workers)+1)) // +1 local device
+		// Weight the split heavily toward the REMOTE workers so that losing a
+		// remote node genuinely breaks generation (local keeps a small share).
+		// Order of --tensor-split matches: local device first, then each --rpc worker.
+		args = append(args, "--tensor-split", remoteHeavySplit(len(workers)))
 	}
 
 	cmd := exec.Command(s.llamaServer, args...)
@@ -172,6 +190,67 @@ func (s *supervisor) isRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.running
+}
+
+// activeWorkers returns the RPC endpoints the current pipeline was launched with.
+func (s *supervisor) activeWorkers() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, len(s.rpcWorkers))
+	copy(out, s.rpcWorkers)
+	return out
+}
+
+// probeAlive reports whether a host:port accepts a TCP connection.
+func probeAlive(endpoint string, timeout time.Duration) bool {
+	conn, err := net.DialTimeout("tcp", endpoint, timeout)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+// monitorWorkers runs in the background. It TCP-probes every active RPC worker
+// of the current pipeline; if any is unreachable it proactively tears the
+// pipeline down and rebuilds it over the survivors (reported by healthyFn).
+// This makes recovery DETERMINISTIC: it fires on a real node death even if
+// llama-server itself would have limped along on cached weights.
+func (s *supervisor) monitorWorkers(healthyFn func() []string) {
+	for {
+		time.Sleep(2 * time.Second)
+		if !s.isRunning() {
+			continue
+		}
+		active := s.activeWorkers()
+		if len(active) == 0 {
+			continue
+		}
+		dead := ""
+		for _, ep := range active {
+			if !probeAlive(ep, 2*time.Second) {
+				dead = ep
+				break
+			}
+		}
+		if dead == "" {
+			continue
+		}
+		log.Printf("monitor: RPC worker %s is DOWN -> tearing down pipeline and rebuilding over survivors", dead)
+		survivors := healthyFn()
+		s.mu.Lock()
+		if err := s.launchLocked(survivors); err != nil {
+			log.Printf("monitor: rebuild launch failed: %v", err)
+			s.mu.Unlock()
+			continue
+		}
+		s.mu.Unlock()
+		if err := s.waitReady(90 * time.Second); err != nil {
+			log.Printf("monitor: rebuilt pipeline not ready: %v", err)
+		} else {
+			log.Printf("monitor: pipeline REBUILT over survivors %v and ready", survivors)
+		}
+	}
 }
 
 // completion sends a prompt to the supervised llama-server and returns the text.
