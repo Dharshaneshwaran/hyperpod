@@ -1,0 +1,15 @@
+HyperPot Phase 1 — Cross-Machine Validation (26 Oct 2026)
+=========================================================
+Controller: ROG (RTX 3050, Linux)   192.168.1.20:8080
+Worker:     TUF (RTX 4050, Windows) 192.168.1.38:9100  id=worker-TUF
+Link:       Wi-Fi (same 192.168.1.x subnet)
+
+/status -> worker-TUF registered, healthy, heartbeats crossing Wi-Fi.
+Port 9100 (controller->worker) reachable after Windows firewall rule.
+
+/infer prompt: "In two sentences, explain what a distributed system is."
+ran on = worker-TUF   (inference executed on the OTHER laptop)
+answer returned cleanly in ~17s (TUF CPU build + Wi-Fi round trip).
+
+RESULT: controller<->worker over Wi-Fi VERIFIED across two physical laptops.
+Foundation for Phase 2 (pipeline split) is solid.
