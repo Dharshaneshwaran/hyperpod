@@ -12,6 +12,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -29,6 +30,7 @@ const heartbeatTimeout = 10 * time.Second
 type worker struct {
 	ID            string    `json:"worker_id"`
 	Address       string    `json:"address"`
+	RPCAddr       string    `json:"rpc_addr"` // host:port of this worker's ggml-rpc-server
 	GPU           string    `json:"gpu"`
 	OS            string    `json:"os"`
 	LastHeartbeat time.Time `json:"-"`
@@ -89,11 +91,26 @@ func (r *registry) snapshot() []worker {
 	return out
 }
 
+// healthyRPCEndpoints returns the host:port RPC endpoints of all currently
+// healthy workers that advertised one. This is the set the supervisor splits over.
+func (r *registry) healthyRPCEndpoints() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var eps []string
+	for _, w := range r.workers {
+		if w.healthy() && w.RPCAddr != "" {
+			eps = append(eps, w.RPCAddr)
+		}
+	}
+	return eps
+}
+
 // ---- wire types -------------------------------------------------------
 
 type registerReq struct {
 	WorkerID string `json:"worker_id"`
 	Address  string `json:"address"`
+	RPCAddr  string `json:"rpc_addr"`
 	GPU      string `json:"gpu"`
 	OS       string `json:"os"`
 }
@@ -131,6 +148,7 @@ type workerRunResp struct {
 type server struct {
 	reg    *registry
 	client *http.Client
+	sup    *supervisor // non-nil when supervisor (Path A) mode is active
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -145,7 +163,7 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad register payload"})
 		return
 	}
-	s.reg.register(&worker{ID: req.WorkerID, Address: req.Address, GPU: req.GPU, OS: req.OS})
+	s.reg.register(&worker{ID: req.WorkerID, Address: req.Address, RPCAddr: req.RPCAddr, GPU: req.GPU, OS: req.OS})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -162,7 +180,9 @@ func (s *server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// handleInfer dispatches the user's prompt to a healthy worker and returns its text.
+// handleInfer dispatches the user's prompt. In supervisor (Path A) mode it goes
+// through the supervised llama-server with automatic detect+recover+rerun.
+// Otherwise it falls back to Phase 1 single-worker dispatch.
 func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 	var req inferReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Prompt == "" {
@@ -173,6 +193,55 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 		req.NPredict = 64
 	}
 
+	if s.sup != nil {
+		s.handleInferSupervised(w, req)
+		return
+	}
+	s.handleInferDispatch(w, req)
+}
+
+// handleInferSupervised runs the prompt through the supervised split pipeline,
+// and on failure (node death / llama-server crash) recovers once and re-runs.
+func (s *server) handleInferSupervised(w http.ResponseWriter, req inferReq) {
+	const maxAttempts = 2
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if !s.sup.isRunning() {
+			log.Printf("infer: pipeline down, (re)building split over survivors (attempt %d)", attempt)
+			if err := s.recoverPipeline(); err != nil {
+				lastErr = fmt.Errorf("recovery failed: %w", err)
+				continue
+			}
+		}
+		text, err := s.sup.completion(context.Background(), req.Prompt, req.NPredict)
+		if err == nil {
+			writeJSON(w, http.StatusOK, inferResp{OK: true, WorkerID: "supervised-split", Text: text})
+			return
+		}
+		lastErr = err
+		log.Printf("infer attempt %d failed: %v -- the pipeline likely lost a node; will recover and re-run", attempt, err)
+		// Mark pipeline down so the next loop recovers.
+		s.sup.mu.Lock()
+		s.sup.stopLocked()
+		s.sup.mu.Unlock()
+	}
+	writeJSON(w, http.StatusBadGateway, inferResp{OK: false, Error: fmt.Sprintf("inference failed after recovery: %v", lastErr)})
+}
+
+// recoverPipeline relaunches llama-server over the currently-healthy RPC workers.
+func (s *server) recoverPipeline() error {
+	workers := s.reg.healthyRPCEndpoints()
+	s.sup.mu.Lock()
+	err := s.sup.launchLocked(workers)
+	s.sup.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	return s.sup.waitReady(90 * time.Second)
+}
+
+// handleInferDispatch is the Phase 1 path: send the whole prompt to one worker.
+func (s *server) handleInferDispatch(w http.ResponseWriter, req inferReq) {
 	wrk := s.reg.pickHealthy()
 	if wrk == nil {
 		writeJSON(w, http.StatusServiceUnavailable, inferResp{OK: false, Error: "no healthy worker"})
@@ -227,6 +296,32 @@ func main() {
 	s := &server{
 		reg:    newRegistry(),
 		client: &http.Client{Timeout: 120 * time.Second},
+	}
+
+	// Supervisor (Path A) mode: active only if llama-server + model are configured.
+	if sup, ok := newSupervisor(); ok {
+		s.sup = sup
+		log.Printf("supervisor mode ENABLED (llama-server=%s model=%s)", sup.llamaServer, sup.model)
+		// If explicit RPC workers were provided, launch the split pipeline now.
+		// Otherwise it launches lazily on the first /infer once workers register.
+		if len(sup.rpcWorkers) > 0 {
+			go func() {
+				sup.mu.Lock()
+				err := sup.launchLocked(sup.rpcWorkers)
+				sup.mu.Unlock()
+				if err != nil {
+					log.Printf("supervisor: initial launch failed: %v", err)
+					return
+				}
+				if err := sup.waitReady(90 * time.Second); err != nil {
+					log.Printf("supervisor: initial pipeline not ready: %v", err)
+				} else {
+					log.Printf("supervisor: pipeline ready at %s", sup.baseURL())
+				}
+			}()
+		}
+	} else {
+		log.Printf("supervisor mode disabled (Phase 1 dispatch mode)")
 	}
 
 	mux := http.NewServeMux()

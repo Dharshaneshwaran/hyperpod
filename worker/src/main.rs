@@ -28,6 +28,7 @@ use std::time::Duration;
 struct RegisterReq {
     worker_id: String,
     address: String,
+    rpc_addr: String,
     gpu: String,
     os: String,
 }
@@ -97,6 +98,7 @@ fn register(cfg: &Config) {
     let req = RegisterReq {
         worker_id: cfg.worker_id.clone(),
         address: cfg.advertise.clone(),
+        rpc_addr: env_or("HYPERPOT_RPC_ADVERTISE", ""),
         gpu: env_or("HYPERPOT_GPU", "unknown"),
         os: detect_os(),
     };
