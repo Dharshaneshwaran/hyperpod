@@ -1,0 +1,128 @@
+% ---------------------------------------------------------------------
+\section{References \& Sources}
+\label{sec:references}
+% ---------------------------------------------------------------------
+
+Every source below was consulted directly during the research for this document.
+Each is tagged by how it was used. Access dates: October 2026.
+
+\sloppy
+
+\subsection{Research papers (competitive landscape)}
+\begin{enumerate}[leftmargin=1.8em,label={[P\arabic*]}]
+  \item \textbf{Prima.cpp: Fast 30--70B LLM Inference on Heterogeneous and
+  Low-Resource Home Clusters.} Z.~Li et al., arXiv:2504.08791 (v1 Apr 2025, v3
+  Jul 2026). \url{https://arxiv.org/abs/2504.08791}. \\
+  \emph{Used for:} heterogeneous/Wi-Fi home-cluster inference; Halda scheduler;
+  the 5--17$\times$ lower TPOT claim vs llama.cpp/exo/dllama; static scheduling
+  (no mid-inference recovery). \VER
+
+  \item \textbf{Petals: Collaborative Inference and Fine-tuning of Large Models.}
+  A.~Borzunov et al., arXiv:2209.01188. \url{https://arxiv.org/abs/2209.01188}. \\
+  \emph{Used for:} BitTorrent-style swarm; exposing hidden states for fine-tuning. \VER
+
+  \item \textbf{Distributed Inference and Fine-tuning of Large Language Models
+  Over The Internet.} A.~Borzunov et al., arXiv:2312.08361. \\
+  \url{https://arxiv.org/abs/2312.08361}. \\
+  \emph{Used for:} churn-tolerant inference over the Internet for 50B+ models
+  (``any device can disconnect abruptly''). \VER
+
+  \item \textbf{Distributed Llama --- Distributed Inference of Large Language
+  Models with Slow Synchronization over Ethernet.} B.~Tadych, 2024. \\
+  \url{https://github.com/b4rtaz/distributed-llama} (report.pdf). \\
+  \emph{Used for:} tensor-parallel home-device inference; synchronization cost. \VER
+
+  \item \textbf{LUMEN: Coordinated Failure Recovery for Distributed LLM Serving.}
+  Z.~Cao et al., arXiv:2606.17787. \url{https://arxiv.org/abs/2606.17787}. \\
+  \emph{Used for:} proof that load-aware, interrupted-request recovery
+  \emph{already exists} in research (datacenter/GPU). Key to the honest-novelty
+  statement. \VER
+
+  \item \textbf{Intelligent Orchestration of Distributed Large Foundation Model
+  Inference at the Edge.} arXiv:2504.03668. \\
+  \url{https://arxiv.org/abs/2504.03668}. \\
+  \emph{Used for:} capacity-aware workload distribution + dynamic partition
+  migration + real-time re-split (the capability-aware recovery idea, already
+  published). \VER
+
+  \item \textbf{FailSafe: High-performance Resilient Serving.} arXiv:2511.14116.
+  \url{https://arxiv.org/abs/2511.14116}. \\
+  \emph{Used for:} serving that survives multiple GPU failures. \VER
+
+  \item \textbf{PipeLive: Efficient Live In-place Pipeline Parallelism
+  Reconfiguration for Dynamic LLM Serving.} arXiv:2604.12171. \\
+  \url{https://arxiv.org/abs/2604.12171}. \\
+  \emph{Used for:} live pipeline reconfiguration during serving. \VER
+
+  \item \textbf{DynaPipe: Dynamic Layer Redistribution for Pipeline-Parallel LLM
+  Inference.} NeurIPS 2025. \\
+  \emph{Used for:} dynamic layer redistribution + async KV-cache migration during
+  inference. \VER
+
+  \item \textbf{EnerInfer: Energy-Aware On-Device LLM Inference.}
+  arXiv:2606.23001. \url{https://arxiv.org/abs/2606.23001}. \\
+  \emph{Used for:} evidence that battery/thermal-aware on-device LLM scheduling
+  \emph{already exists} --- which ruled out that angle as a novelty. \VER
+
+  \item \textbf{LLM Inference at the Edge: Mobile, NPU, and GPU Performance
+  Efficiency Trade-offs Under Sustained Load.} arXiv:2603.23640. \\
+  \emph{Used for:} thermal throttling as the dominant constraint on-device. \VER
+
+  \item \textbf{MNN-AECS: Energy Optimization for LLM Decoding on Mobile Devices
+  via Adaptive Core Selection.} arXiv:2506.19884. \\
+  \emph{Used for:} further prior art on energy-adaptive on-device decoding. \VER
+\end{enumerate}
+
+\subsection{Official repositories \& documentation}
+\begin{enumerate}[leftmargin=1.8em,label={[R\arabic*]}]
+  \item \textbf{llama.cpp --- RPC tool README.} ggml-org/llama.cpp. \\
+  \url{https://github.com/ggml-org/llama.cpp/blob/master/tools/rpc/README.md}. \\
+  \emph{Used for:} the RPC backend design and its insecurity warning. \VER
+
+  \item \textbf{llama.cpp RPC --- peer-failure behaviour.} LlamaCppEx binding
+  docs. \url{https://llama-cpp-ex.hexdocs.pm/LlamaCppEx.RPC.html}. \\
+  \emph{Used for:} the verified statement that a peer crash/drop terminates the
+  process (\code{RPC\_STATUS\_ASSERT}/\code{GGML\_ABORT}). \VER
+
+  \item \textbf{llama.cpp issue \#11508} --- crash while loading in multi-node
+  RPC after a node crash. \url{https://github.com/ggml-org/llama.cpp/issues/11508}. \VER
+
+  \item \textbf{llama.cpp issue \#9214} --- RPC backend crash. \\
+  \url{https://github.com/ggml-org/llama.cpp/issues/9214}. \VER
+
+  \item \textbf{Exo.} exo-explore/exo. \url{https://github.com/exo-explore/exo}. \\
+  \emph{Used for:} features (auto-discovery, MLX, Thunderbolt RDMA, tensor
+  parallel); open issues on instability (\#1726, \#1847, \#2007, \#775). \VER
+
+  \item \textbf{Deep Dive: Exo --- Distributed AI Inference on Consumer Hardware}
+  (review, Sept 2025). \emph{Used for:} ``critical gaps in security, fault
+  tolerance, and operational tooling''. \VER
+
+  \item \textbf{prima.cpp repository.} \url{https://github.com/OpenCPIL/prima.cpp}
+  (also gitee.com/zonghang-li/prima.cpp). \VER
+
+  \item \textbf{QVAC Fabric LLM} (Tether Data). \\
+  \url{https://qvac.tether.io/products/fabric} and the Dec~2025 launch
+  announcement on \code{tether.io}. \\
+  \emph{Used for:} existence of an edge-first inference + LoRA fine-tuning
+  framework. Existence \VER; technical internals \UNK.
+\end{enumerate}
+
+\subsection{Hackathon (rules \& requirements)}
+\begin{enumerate}[leftmargin=1.8em,label={[H\arabic*]}]
+  \item \textbf{Meta Global AI Developer Hackathon --- official page.} \\
+  \url{https://dev.meta.ai/events/global-hackathon}. \\
+  \emph{Used for:} dates, Indie vs Startup tracks and their judging criteria,
+  Meta Model API / open-weights model usage, \$150 credits, themes, eligibility. \VER
+
+  \item \textbf{Cerebral Valley event listing.} \\
+  \url{https://cerebralvalley.ai/e/meta-ai-developer-hackathon}. \\
+  \emph{Used for:} the 20,000-applicant cap and rolling evaluation. \VER
+\end{enumerate}
+
+\subsection{Evidence-strength note}
+Items marked \VER\ are quoted or closely paraphrased from the named source.
+Where a source is marketing material (e.g. QVAC Fabric), only the
+\emph{existence} of the capability is treated as verified; its internal
+mechanisms remain \UNK\ until primary technical documentation is available. No
+claim of HyperPot's novelty rests on an \UNK\ item.

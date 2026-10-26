@@ -1,0 +1,74 @@
+% =====================================================================
+%  preamble.tex — shared setup for the Simplified HyperPot guide
+%  Edit formatting/macros here; edit prose in sections/*.tex.
+% =====================================================================
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{fancyhdr}
+\usepackage{textcomp}
+\usepackage{newunicodechar}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc,fit,backgrounds}
+
+\extrafloats{120}
+
+% Make Unicode symbols used in the prose safe under pdfLaTeX.
+\newunicodechar{₹}{Rs.\,}
+\newunicodechar{→}{\ensuremath{\rightarrow}}
+\newunicodechar{≤}{\ensuremath{\leq}}
+\newunicodechar{≥}{\ensuremath{\geq}}
+\newunicodechar{≠}{\ensuremath{\neq}}
+\newunicodechar{×}{\ensuremath{\times}}
+\newunicodechar{§}{\S}
+\newunicodechar{–}{--}
+\newunicodechar{—}{---}
+\newunicodechar{✓}{\ensuremath{\checkmark}}
+
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,urlcolor=blue!55!black,citecolor=blue!55!black}
+
+% ---- Column types -----------------------------------------------------
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+
+% ---- Code / route helpers --------------------------------------------
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\route}[1]{\par\noindent{\small\colorbox{gray!12}{\parbox{0.97\linewidth}{\ttfamily #1}}}\par\smallskip}
+
+% ---- Evidence tags (the HyperPot equivalent of data-source tags) -----
+\definecolor{vercol}{RGB}{20,110,60}
+\definecolor{hypcol}{RGB}{150,90,0}
+\definecolor{unkcol}{RGB}{150,40,40}
+\newcommand{\VER}{\textcolor{vercol}{\textbf{[VERIFIED]}}}
+\newcommand{\HYP}{\textcolor{hypcol}{\textbf{[HYPOTHESIS]}}}
+\newcommand{\UNK}{\textcolor{unkcol}{\textbf{[UNKNOWN]}}}
+
+% ---- Keep / Drop tags -------------------------------------------------
+\definecolor{keepcol}{RGB}{22,120,60}
+\definecolor{dropcol}{RGB}{170,30,30}
+\newcommand{\Keep}{\textcolor{keepcol}{\textbf{KEEP}}}
+\newcommand{\Drop}{\textcolor{dropcol}{\textbf{DROP}}}
+
+% ---- Reusable "field" lead-in -----------------------------------------
+\newcommand{\field}[1]{\par\smallskip\noindent\textbf{#1.}\ }
+
+% ---- Listings ---------------------------------------------------------
+\lstdefinestyle{plain}{basicstyle=\ttfamily\footnotesize,backgroundcolor=\color{gray!8},
+  frame=single,rulecolor=\color{gray!35},breaklines=true,columns=fullflexible,showstringspaces=false}
+
+% ---- Headers ----------------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small HyperPot — Simplified Guide}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}

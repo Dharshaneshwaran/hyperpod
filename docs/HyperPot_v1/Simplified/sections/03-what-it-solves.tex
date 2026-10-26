@@ -1,0 +1,63 @@
+% ---------------------------------------------------------------------
+\section{What Fault Tolerance Solves (In Plain Words)}
+\label{sec:solves}
+% ---------------------------------------------------------------------
+
+\subsection{The group-essay analogy}
+Imagine four friends writing one long essay together, split into parts. Halfway
+through, one friend's laptop dies and he leaves.
+\begin{itemize}[leftmargin=1.4em,nosep]
+  \item \textbf{Without fault tolerance:} the whole essay is ruined; everyone
+  starts over from the beginning. All prior work is wasted.
+  \item \textbf{With fault tolerance:} the group notices he is gone, hands his
+  part to a friend who has a spare copy of the material, and the essay continues.
+  A small hiccup, then back to normal.
+\end{itemize}
+Fault tolerance = \textbf{the system keeps working even when a part of it breaks}.
+
+\subsection{The LLM version}
+HyperPot splits one model across laptops in an assembly line (worker~1 →
+worker~2 → worker~3). Because these are real laptops on Wi-Fi, any one can
+disappear at any moment. With today's tools (llama.cpp RPC) this is fatal: one
+laptop disconnecting crashes the whole run and the half-written answer is lost
+(\VER, \S\ref{sec:landscape}). HyperPot fixes exactly this: a laptop drops →
+the controller notices via heartbeat → its share is re-routed to a surviving
+laptop → the answer keeps streaming.
+
+\subsection{A real-time example}
+\field{Scene} A college lab: student laptops on the lab Wi-Fi together run a
+Llama model to answer questions for a class. A student asks, ``Explain
+photosynthesis step by step\ldots'' and the answer is half-printed on screen.
+Suddenly one student \textbf{grabs their laptop and walks out} --- that laptop
+held one quarter of the model.
+\begin{itemize}[leftmargin=1.4em,nosep]
+  \item \textbf{Today's systems:} the answer freezes and errors out mid-sentence.
+  \item \textbf{HyperPot:} a \textasciitilde1--2 second pause, then the answer
+  continues: ``\ldots the plant uses sunlight to turn water and CO\textsubscript{2}
+  into sugar.'' The user never knew a laptop just left the building.
+\end{itemize}
+
+\subsection{The improved recovery idea (capability-aware)}
+Rather than dumping the dead laptop's whole slice onto one machine, the
+controller can \textbf{check who has spare compute} and split the slice by
+capability (a strong RTX~4050 takes more layers than a weaker RTX~3050). This is
+smarter, but note the tradeoff below.
+
+\field{The engineering catch \HYP} A laptop can only take over a slice if it
+already holds those model layers in memory. So capability-aware redistribution
+requires survivors to \emph{pre-load overlapping slices}, which costs memory on
+every laptop. Two options:
+\begin{itemize}[leftmargin=1.4em,nosep]
+  \item \textbf{Simple (recommended for MVP):} one identical hot-standby holds a
+  copy of a worker's slice $\rightarrow$ fast, reliable recovery.
+  \item \textbf{Smarter (stretch):} several laptops pre-hold overlapping slices
+  $\rightarrow$ can rebalance by power, but uses more memory and is harder to
+  finish in time.
+\end{itemize}
+
+\subsection{What it solves, in one line}
+\begin{quote}
+It makes a cluster of unreliable, come-and-go laptops behave like one reliable
+computer --- so people's real laptops dropping off the Wi-Fi does not destroy
+the work.
+\end{quote}

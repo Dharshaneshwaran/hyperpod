@@ -1,0 +1,53 @@
+% ---------------------------------------------------------------------
+\section{How It Works (Architecture)}
+\label{sec:arch}
+% ---------------------------------------------------------------------
+
+\subsection{The normal path}
+\begin{enumerate}[leftmargin=1.6em,nosep]
+  \item The user sends a prompt to the \textbf{Go controller} over HTTP.
+  \item The controller knows which worker holds which layers and sends the
+  prompt down the pipeline.
+  \item Worker~1 runs its layers, passes activations to worker~2, and so on.
+  \item The last worker produces tokens, which stream back to the user.
+  \item Throughout, every worker sends a \textbf{heartbeat} to the controller.
+\end{enumerate}
+
+\subsection{The failover path (the novel core)}
+\begin{enumerate}[leftmargin=1.6em,nosep]
+  \item A worker stops sending heartbeats (lid closed / Wi-Fi dropped / killed).
+  \item The controller detects the gap within a short timeout.
+  \item It picks a healthy machine that holds (or can load) the dead worker's
+  layer slice --- preferring the identical hot standby.
+  \item It reassigns the slice and \textbf{re-runs the current request}.
+  \item Token streaming resumes; the user sees a short pause, not a crash.
+\end{enumerate}
+
+\subsection{Text diagram}
+\begin{lstlisting}[style=plain]
+                 +-------------------+
+   user  ---->   |  Go CONTROLLER    |   heartbeats <---- all workers
+   prompt        |  - task queue     |   failover logic lives here
+                 |  - who-has-what   |
+                 +---------+---------+
+                           | assign layer slices
+         +-----------------+-----------------+
+         v                 v                 v
+   +-----------+     +-----------+     +-----------+
+   | WORKER 1  | --> | WORKER 2  | --> | WORKER 3  | --> tokens
+   | 4050 (win)|     | 4050 (win)|     | 3050 (lin)|
+   | layers0-8 |     | layers9-16|     |layers17-24|
+   +-----------+     +-----------+     +-----------+
+                      (hot standby
+                       for worker 1)
+
+   If WORKER 1 dies: controller detects silence ->
+   reassigns layers 0-8 to the standby -> re-runs request ->
+   tokens keep streaming.
+\end{lstlisting}
+
+\subsection{Why the controller, not llama.cpp, owns recovery}
+llama.cpp's RPC mode aborts the process on any peer failure (\VER,
+\S\ref{sec:landscape}). By keeping llama.cpp \emph{local} on each worker and
+putting all coordination in the Go controller, a dead worker becomes a
+controller event to handle --- not a fatal crash of the whole system.

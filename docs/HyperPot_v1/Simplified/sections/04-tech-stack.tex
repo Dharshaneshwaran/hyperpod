@@ -1,0 +1,74 @@
+% ---------------------------------------------------------------------
+\section{The Technology Stack}
+\label{sec:techstack}
+% ---------------------------------------------------------------------
+
+Everything here \emph{extends} the original Go~+~Rust~+~llama.cpp design; nothing
+is rewritten. The one mindset shift: \textbf{the controller owns reliability,
+not llama.cpp}.
+
+\subsection{Component by component}
+
+\field{Controller --- Go \Keep} The coordinator ``brain''. Handles the HTTP API
+(user sends prompts), the task queue, worker heartbeats (detect a dead laptop),
+result collection, and --- the novel part --- the \textbf{failover logic}:
+``node died → who is alive and has capacity → reassign its layers → re-run the
+request''. Go is well suited to this and the heartbeat/queue pieces already exist.
+
+\field{Worker agent --- Rust \Keep} Runs on each laptop. Registers with the
+controller, sends heartbeats (``alive; here is my CPU/RAM/battery''), loads its
+assigned slice of the model, runs its layers via llama.cpp, and passes
+activations to the next worker. Rust compiles to Windows, Linux, and macOS.
+
+\field{Inference engine --- llama.cpp \Keep (usage changed)}
+\begin{itemize}[leftmargin=1.4em,nosep]
+  \item \Drop\ \textbf{Do NOT use llama.cpp's built-in RPC mode.} It crashes on
+  node loss (\VER, \S\ref{sec:landscape}); building on it inherits the exact
+  failure we are beating.
+  \item \Keep\ \textbf{Use llama.cpp as a local engine on each worker}, with the
+  Go controller in charge of coordination and recovery. We route \emph{around}
+  llama.cpp's weak part. This single decision is what makes the project possible.
+\end{itemize}
+
+\field{Model --- Meta Llama, small, GGUF \Keep} A small open-weights Llama (e.g.
+Llama~3.2 1B or 3B) in GGUF, quantized (e.g. Q4). Small = fast load, fits weak
+laptops, snappy demo. Satisfies the hackathon's ``use a Meta model'' requirement.
+\Drop\ 70B models --- slow demo, and prima.cpp wins that contest anyway.
+
+\field{Networking --- TCP/gRPC over Wi-Fi \Keep} Workers $\leftrightarrow$
+controller over plain TCP/JSON to start (upgrade to gRPC only if needed). Wi-Fi
+is both the demo environment and the story (``real laptops, real Wi-Fi'').
+
+\field{Model split --- pipeline (by layers) \Keep} Split by layers (worker~1 =
+layers 0--8, worker~2 = 9--16, \ldots). For recovery, a survivor picks up the
+dead worker's layers.
+
+\field{Recovery method --- request-level re-route \Keep (the core)}
+When a worker dies mid-request, the controller reassigns its layers to a survivor
+and \textbf{re-runs the current request} from the start of generation. The user
+sees a short pause, then continuation. \Drop\ mid-token activation handoff --- too
+hard for the time window.
+
+\field{Code written with --- Kiro \Keep} The Go controller, the Rust worker, the
+failover handling, and the glue are written with Kiro.
+
+\subsection{Summary table}
+\begin{table}[h]
+\centering\footnotesize
+\caption{HyperPot technology stack}
+\label{tab:stack}
+\begin{tabularx}{\linewidth}{L{0.34\linewidth}Y}
+\toprule
+Piece & Choice \\
+\midrule
+Controller / failover brain & Go (keep, extend) \\
+Worker agent per laptop & Rust (keep) \\
+Inference engine & llama.cpp --- local mode, NOT RPC (keep, change usage) \\
+Model & Meta Llama 3.2 1B/3B, GGUF, quantized (add) \\
+Networking & TCP/JSON then gRPC over Wi-Fi (add) \\
+Model split & by layers (pipeline) (add) \\
+Recovery method & request-level re-route, controller-driven (core) \\
+Code written with & Kiro \\
+\bottomrule
+\end{tabularx}
+\end{table}

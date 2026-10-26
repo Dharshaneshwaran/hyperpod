@@ -1,0 +1,62 @@
+% ---------------------------------------------------------------------
+\section{The Competitive Landscape (Verified)}
+\label{sec:landscape}
+% ---------------------------------------------------------------------
+
+This chapter is the evidence base. Everything here was checked against official
+repositories, papers, or issue trackers.
+
+\subsection{The existing projects}
+\begin{table}[h]
+\centering\footnotesize
+\caption{What existing distributed-inference projects actually do}
+\label{tab:landscape}
+\begin{tabularx}{\linewidth}{L{0.16\linewidth}Y L{0.26\linewidth}}
+\toprule
+Project & What it does & Fault tolerance on node loss \\
+\midrule
+llama.cpp RPC & Offloads layers to remote \code{rpc-server} nodes over TCP &
+\textbf{None} --- a peer crash/drop ``terminates the process'' \VER \\
+Exo & Auto-discovery cluster, best on Apple Silicon (MLX, Thunderbolt) &
+``Critical gaps in fault tolerance'' per 2025 review + open issues \VER \\
+Petals & BitTorrent-style swarm for 50B+ models over the Internet; also fine-tuning &
+Designed for churn, but Internet-scale / large models (not LAN laptops) \VER \\
+Distributed Llama & Home-device tensor parallel over Ethernet &
+Static topology; no churn-recovery claim \VER \\
+prima.cpp & 30--70B on heterogeneous home clusters; Halda scheduler; Wi-Fi tolerant &
+Static, up-front scheduling; no mid-inference recovery emphasis \VER \\
+QVAC Fabric & Edge-first inference + LoRA fine-tuning on phones/laptops/GPUs &
+Marketing claims decentralization; internals \UNK \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{The key verified facts}
+\begin{itemize}[leftmargin=1.4em,nosep]
+  \item \VER\ \textbf{llama.cpp RPC has no fault tolerance.} Its own docs state a
+  peer crash, a dropped network, or a malformed response terminates the process
+  (via \code{RPC\_STATUS\_ASSERT}/\code{GGML\_ABORT}). Confirmed by GitHub issues
+  \#11508 and \#9214.
+  \item \VER\ \textbf{Exo's fault tolerance is weak in practice.} A Sept 2025
+  deep-dive review cites ``critical gaps in security, fault tolerance, and
+  operational tooling''; open issues show nodes dropping and unstable node counts.
+  \item \VER\ \textbf{Petals already solved churn-tolerant inference} --- but
+  over the \emph{Internet} for \emph{50B+} models, not a LAN laptop pool.
+  \item \VER\ \textbf{Capability-aware failure recovery already exists in
+  research}: LUMEN (arXiv 2606.17787) does ``interrupted-request distribution at
+  failure time'' considering cluster load; ``Intelligent Orchestration \ldots at
+  the Edge'' (arXiv 2504.03668) does capacity-aware distribution + dynamic
+  partition migration; FailSafe (arXiv 2511.14116) survives multiple GPU
+  failures. These target \textbf{GPU/cloud/edge-server} clusters, not consumer
+  laptops on Wi-Fi with llama.cpp.
+\end{itemize}
+
+\subsection{What this means for novelty}
+\begin{itemize}[leftmargin=1.4em,nosep]
+  \item As a \emph{research algorithm}, load-aware recovery is \textbf{not
+  novel}. \VER\ Do not claim invention to a judge.
+  \item As a \emph{working system} on consumer laptops, over Wi-Fi, using
+  llama.cpp (which cannot do it) --- that combination is \textbf{unclaimed} as
+  far as searched. This is \textbf{engineering / integration novelty} plus a
+  strong live demo. \HYP\ (absence of a shipped product; not a proof of absence)
+\end{itemize}

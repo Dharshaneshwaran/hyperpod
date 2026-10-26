@@ -1,0 +1,27 @@
+# ---- Large / generated things that must NOT be committed ----
+
+# llama.cpp source clone + built model (huge; rebuilt/downloaded locally)
+test/llama.cpp/
+test/models/
+test/*.log
+
+# Rust build output
+worker/target/
+
+# Go compiled binary
+controller/hyperpot-controller
+controller/hyperpot-controller.exe
+
+# Worker compiled binary (if copied around)
+hyperpot-worker
+
+# LaTeX build intermediates (keep main.pdf; drop aux/log/toc)
+docs/**/*.aux
+docs/**/*.log
+docs/**/*.out
+docs/**/*.toc
+docs/**/*.synctex.gz
+
+# OS / editor noise
+.DS_Store
+*.swp

@@ -1,0 +1,40 @@
+% ---------------------------------------------------------------------
+\section{Risks \& Immediate Next Steps}
+\label{sec:risks}
+% ---------------------------------------------------------------------
+
+\subsection{The honest risks}
+\begin{itemize}[leftmargin=1.4em,nosep]
+  \item \textbf{llama.cpp fights failover.} The abort on peer failure is baked
+  into its RPC layer (\VER). Mitigation: use llama.cpp \emph{locally} and do
+  recovery in the controller (\S\ref{sec:arch}); use request-level re-route, not
+  mid-token handoff.
+  \item \textbf{Cross-platform build cost.} Windows + Linux + macOS, CUDA +
+  Metal. Mitigation: all-CUDA core first; Macs are stretch only. \HYP
+  \item \textbf{Novelty challenge from an informed judge.} Mitigation: the
+  ``brought it to laptops'' framing (\S\ref{sec:hackathon}), never ``invented''.
+  \item \textbf{Live-demo failure.} Mitigation: recorded backup video.
+\end{itemize}
+
+\subsection{Guardrails being held}
+\begin{itemize}[leftmargin=1.4em,nosep]
+  \item \Keep: Go controller, Rust worker, llama.cpp (local), Meta Llama (small
+  GGUF), Wi-Fi.
+  \item \Drop: fine-tuning, llama.cpp RPC mode, 70B models, mid-token handoff.
+  \item Win condition: a working live failover demo --- not a novelty claim.
+\end{itemize}
+
+\subsection{Immediate next steps}
+\begin{enumerate}[leftmargin=1.6em,nosep]
+  \item Kill-test llama.cpp RPC to confirm the premise (\S\ref{sec:mvp}).
+  \item Lock the exact Meta Llama GGUF.
+  \item Read the Official Rules once published.
+  \item Build Phase~1 (one Rust worker + Go controller + llama.cpp, single node)
+  --- only on an explicit ``build'' instruction.
+\end{enumerate}
+
+\subsection{Status of this document}
+This is a planning and research artifact. No HyperPot code has been written yet.
+The design extends the existing Go~+~Rust~+~llama.cpp architecture and is
+sequenced so the riskiest piece (failover on identical hardware) is proven before
+any cross-platform work begins.
