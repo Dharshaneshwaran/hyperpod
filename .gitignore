@@ -25,3 +25,7 @@ docs/**/*.synctex.gz
 # OS / editor noise
 .DS_Store
 *.swp
+
+# React frontend build artifacts
+frontend/node_modules/
+frontend/dist/
