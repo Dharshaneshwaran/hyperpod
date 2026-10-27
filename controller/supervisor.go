@@ -284,29 +284,40 @@ func probeAlive(endpoint string, timeout time.Duration) bool {
 // pipeline down and rebuilds it over the survivors (reported by healthyFn).
 // This makes recovery DETERMINISTIC: it fires on a real node death even if
 // llama-server itself would have limped along on cached weights.
+// monitorWorkers runs in the background and detects a dead RPC node using the
+// ONE unambiguous signal verified in Phase 0: when a remote RPC node truly
+// dies, llama.cpp ABORTS and the llama-server PROCESS EXITS.
+//
+// We deliberately do NOT probe the RPC port (ggml-rpc-server is single-client
+// and refuses extra connections -> false positives) nor poll /health (a busy
+// server mid-generation is slow to answer -> false positives). Process exit is
+// unambiguous: a busy/slow server is still running; a dead-node server exits.
+//
+// So: if a pipeline that was launched WITH remote workers stops running (the
+// supervised process exited) and we are not already mid-rebuild, rebuild over
+// the survivors reported by healthyFn.
 func (s *supervisor) monitorWorkers(healthyFn func() []string) {
 	for {
-		time.Sleep(2 * time.Second)
-		if !s.isRunning() {
+		time.Sleep(1 * time.Second)
+
+		s.mu.Lock()
+		running := s.running
+		hadWorkers := len(s.rpcWorkers) > 0
+		s.mu.Unlock()
+
+		// Only act when a REMOTE-split pipeline has exited on its own.
+		if running || !hadWorkers {
 			continue
 		}
-		active := s.activeWorkers()
-		if len(active) == 0 {
-			continue
-		}
-		dead := ""
-		for _, ep := range active {
-			if !probeAlive(ep, 2*time.Second) {
-				dead = ep
-				break
-			}
-		}
-		if dead == "" {
-			continue
-		}
-		log.Printf("monitor: RPC worker %s is DOWN -> tearing down pipeline and rebuilding over survivors", dead)
+
+		log.Printf("monitor: supervised llama-server EXITED (remote node died) -> rebuilding over survivors")
 		survivors := healthyFn()
 		s.mu.Lock()
+		// Re-check: another path may already be rebuilding.
+		if s.running {
+			s.mu.Unlock()
+			continue
+		}
 		if err := s.launchLocked(survivors); err != nil {
 			log.Printf("monitor: rebuild launch failed: %v", err)
 			s.mu.Unlock()

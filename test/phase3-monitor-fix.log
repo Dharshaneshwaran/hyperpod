@@ -1,0 +1,24 @@
+HyperPot — Monitor detection FIXED (27 Oct 2026)
+================================================
+Problem: the proactive monitor rebuilt the split spuriously even when the TUF
+was alive.
+
+Two flawed approaches found and discarded (honest record):
+  1. TCP-probe the RPC port (50052): FALSE POSITIVE. ggml-rpc-server is
+     single-client; while llama-server holds the RPC connection, an external
+     probe is refused -> looks "dead" though it is working.
+  2. Poll llama-server /health: FALSE POSITIVE. During a slow 3B split
+     generation the server is busy and does not answer /health in time.
+
+Correct signal (verified Phase 0): a truly dead remote node makes llama.cpp
+ABORT -> the llama-server PROCESS EXITS. A busy/slow server is still running;
+a dead-node server exits. So the monitor now watches PROCESS EXIT only
+(s.running flips false via cmd.Wait()), no port/health probing.
+
+Verified after fix:
+  - Stability: TUF stays up, 3 big-tier prompts -> gen events = 1 (NO spurious
+    rebuild), all answered via=big-3B-split from the live 2-way split.
+  - Recovery: TUF killed -> llama-server exits -> monitor rebuilds gen 2 over
+    [] (ROG alone) -> after-kill prompt answered ("Cat.").
+
+Net: the big-tier split is now STABLE while healthy and RECOVERS on real death.
