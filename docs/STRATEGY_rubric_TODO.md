@@ -81,6 +81,24 @@ enriches the Demo (25%). One feature, three criteria.
 2. Which lead beneficiary is most genuine to the builder (school tutor, clinic,
    field site)? Personal connection strengthens the pitch.
 
+## DECISIONS LOCKED (27 Oct 2026)
+- **No Meta API credits** -> go fully LOCAL. This keeps the whole system
+  offline/private, which strengthens the story (no cloud, no data leaves).
+- **Creative Meta use = tiered LOCAL Meta Llama models:**
+  - SMALL tier: Llama 3.2 1B (fast, single laptop) for easy requests.
+  - BIG tier:   Llama 3.2 3B (smarter) served across the pool, with our fault
+    tolerance. [Chosen over 8B: 8B is too slow on a 3050 + CPU TUF over Wi-Fi and
+    risks a dragging demo. Start reliable (3B), push to 8B later only if time +
+    performance allow -- "start slow, speed up".]
+  - Uses MULTIPLE Meta Llama models at different sizes = creative, not a basic
+    one-model integration. All local/private/offline.
+- **Honesty note:** 3B fits one laptop, so do NOT claim "too big for one machine"
+  with 3B. The pooling is justified by FAULT TOLERANCE (survive a node dying),
+  which is the real differentiator. The "genuinely too big" story is the 8B
+  stretch only.
+- Beneficiary: still to finalize, but framed as INFRASTRUCTURE (school/clinic =
+  demo setting only, per the anti-projects caution below).
+
 ---
 *Parked 26 Oct 2026. Revisit after Phase 2/3 core build is working.*
 

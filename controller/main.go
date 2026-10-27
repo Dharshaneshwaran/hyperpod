@@ -122,6 +122,7 @@ type heartbeatReq struct {
 type inferReq struct {
 	Prompt   string `json:"prompt"`
 	NPredict int    `json:"n_predict"`
+	Tier     string `json:"tier"` // "small" (1B, fast single) or "big" (3B split, default)
 }
 
 type inferResp struct {
@@ -194,10 +195,39 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.sup != nil {
+		// Tier routing: "small" -> fast single 1B model; "big"/default -> split 3B.
+		if req.Tier == "small" && s.sup.hasSmall() {
+			s.handleInferSmall(w, req)
+			return
+		}
 		s.handleInferSupervised(w, req)
 		return
 	}
 	s.handleInferDispatch(w, req)
+}
+
+// handleInferSmall serves the request from the fast, always-local small-tier model.
+func (s *server) handleInferSmall(w http.ResponseWriter, req inferReq) {
+	// Ensure the small server is up (launch lazily once).
+	s.sup.mu.Lock()
+	up := s.sup.smallUp
+	s.sup.mu.Unlock()
+	if !up {
+		if err := s.sup.launchSmall(); err != nil {
+			writeJSON(w, http.StatusBadGateway, inferResp{OK: false, Error: fmt.Sprintf("small tier launch failed: %v", err)})
+			return
+		}
+		if err := s.sup.waitReadyURL(s.sup.smallBaseURL(), 90*time.Second); err != nil {
+			writeJSON(w, http.StatusBadGateway, inferResp{OK: false, Error: fmt.Sprintf("small tier not ready: %v", err)})
+			return
+		}
+	}
+	text, err := s.sup.completionAt(context.Background(), s.sup.smallBaseURL(), req.Prompt, req.NPredict)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, inferResp{OK: false, Error: fmt.Sprintf("small tier inference failed: %v", err)})
+		return
+	}
+	writeJSON(w, http.StatusOK, inferResp{OK: true, WorkerID: "small-1B", Text: text})
 }
 
 // handleInferSupervised runs the prompt through the supervised split pipeline,
@@ -215,7 +245,7 @@ func (s *server) handleInferSupervised(w http.ResponseWriter, req inferReq) {
 		}
 		text, err := s.sup.completion(context.Background(), req.Prompt, req.NPredict)
 		if err == nil {
-			writeJSON(w, http.StatusOK, inferResp{OK: true, WorkerID: "supervised-split", Text: text})
+			writeJSON(w, http.StatusOK, inferResp{OK: true, WorkerID: "big-3B-split", Text: text})
 			return
 		}
 		lastErr = err

@@ -40,6 +40,13 @@ type supervisor struct {
 	port        string
 	ngl         string
 
+	// small-tier model: a separate always-local llama-server (no split) for fast
+	// responses. Optional; enabled when HYPERPOT_SMALL_MODEL is set.
+	smallModel string
+	smallPort  string
+	smallCmd   *exec.Cmd
+	smallUp    bool
+
 	// rpcWorkers is the list of ggml-rpc-server endpoints (host:port) to split across.
 	rpcWorkers []string
 
@@ -73,6 +80,8 @@ func newSupervisor() (*supervisor, bool) {
 		host:        host,
 		port:        port,
 		ngl:         ngl,
+		smallModel:  os.Getenv("HYPERPOT_SMALL_MODEL"), // optional
+		smallPort:   envDefault("HYPERPOT_SMALL_PORT", "9932"),
 		rpcWorkers:  workers,
 	}, true
 }
@@ -86,6 +95,65 @@ func envDefault(k, d string) string {
 
 func (s *supervisor) baseURL() string {
 	return fmt.Sprintf("http://%s:%s", s.host, s.port)
+}
+
+func (s *supervisor) smallBaseURL() string {
+	return fmt.Sprintf("http://%s:%s", s.host, s.smallPort)
+}
+
+func (s *supervisor) hasSmall() bool {
+	return s.smallModel != ""
+}
+
+// launchSmall starts the always-local small-tier llama-server (no split).
+func (s *supervisor) launchSmall() error {
+	if !s.hasSmall() {
+		return fmt.Errorf("small model not configured")
+	}
+	args := []string{
+		"-m", s.smallModel,
+		"-ngl", s.ngl,
+		"--host", s.host,
+		"--port", s.smallPort,
+		"-c", envDefault("HYPERPOT_CTX", "2048"),
+	}
+	cmd := exec.Command(s.llamaServer, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start small llama-server: %w", err)
+	}
+	s.mu.Lock()
+	s.smallCmd = cmd
+	s.smallUp = true
+	s.mu.Unlock()
+	log.Printf("supervisor: launched SMALL-tier llama-server on %s (model=%s)", s.smallBaseURL(), s.smallModel)
+	go func() {
+		err := cmd.Wait()
+		s.mu.Lock()
+		s.smallUp = false
+		s.mu.Unlock()
+		log.Printf("supervisor: small-tier llama-server exited: %v", err)
+	}()
+	return nil
+}
+
+// waitReadyURL polls a given base URL's /health until ready or timeout.
+func (s *supervisor) waitReadyURL(base string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	client := &http.Client{Timeout: 3 * time.Second}
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(base + "/health")
+		if err == nil {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return fmt.Errorf("server at %s not ready within %s", base, timeout)
 }
 
 // evenSplit returns a comma tensor-split string giving each worker an equal share.
@@ -255,12 +323,17 @@ func (s *supervisor) monitorWorkers(healthyFn func() []string) {
 
 // completion sends a prompt to the supervised llama-server and returns the text.
 func (s *supervisor) completion(ctx context.Context, prompt string, nPredict int) (string, error) {
+	return s.completionAt(ctx, s.baseURL(), prompt, nPredict)
+}
+
+// completionAt sends a prompt to a specific llama-server base URL.
+func (s *supervisor) completionAt(ctx context.Context, base, prompt string, nPredict int) (string, error) {
 	body, _ := json.Marshal(map[string]any{
 		"prompt":    prompt,
 		"n_predict": nPredict,
 		"stream":    false,
 	})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL()+"/completion", bytes.NewReader(body))
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+"/completion", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Timeout: 180 * time.Second}
 	resp, err := client.Do(req)
