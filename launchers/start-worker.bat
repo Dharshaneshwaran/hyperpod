@@ -14,7 +14,7 @@ set "CONTROLLER_IP=192.168.1.20"
 set "RPC_PORT=50052"
 set "WORKER_ID=worker-TUF"
 set "GPU_NAME=RTX 4050"
-set "LLAMA_DIR=C:\llama"
+set "LLAMA_DIR=C:\llama-cuda"
 set "MODEL=C:\llama\models\Llama-3.2-1B-Instruct-Q4_K_M.gguf"
 set "WORKER_EXE=D:\meta\hyperpod\worker\target\release\hyperpot-worker.exe"
 REM ----------------------------------------------------------

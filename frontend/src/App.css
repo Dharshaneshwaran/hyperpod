@@ -393,3 +393,21 @@ textarea:focus { border-color: var(--primary); }
     --duration-slow: 0ms;
   }
 }
+
+/* ---------- model placement ---------- */
+.place-card { margin-top: var(--spacing-element); }
+.place-list { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.place-row {
+  display: grid;
+  grid-template-columns: 220px 150px 1fr 80px;
+  align-items: center; gap: 12px;
+}
+.place-dev { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place-where { font-size: 13px; color: var(--muted); }
+.place-bar { height: 8px; border-radius: var(--radius-full); background: var(--muted-bg); overflow: hidden; }
+.place-bar span { display: block; height: 100%; background: var(--primary); border-radius: var(--radius-full); }
+.place-bar span.remote { background: var(--success); }
+.place-mib { text-align: right; font-size: 13px; }
+.place-foot { margin-top: 4px; }
+.placement { margin-top: 10px; font-size: 13px; }
+.tag-inline { margin-left: 8px; vertical-align: 1px; }

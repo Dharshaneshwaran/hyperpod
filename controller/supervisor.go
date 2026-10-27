@@ -16,6 +16,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -26,6 +27,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +36,8 @@ import (
 
 type supervisor struct {
 	mu sync.Mutex
+	// rebuildMu serializes launch/wait so only one (re)build runs at a time.
+	rebuildMu sync.Mutex
 
 	llamaServer string
 	model       string
@@ -52,9 +57,41 @@ type supervisor struct {
 
 	cmd     *exec.Cmd
 	running bool
+	// ready is true once the current generation answered /health with 200.
+	ready bool
 	// generation increments every (re)launch; used to detect restarts.
 	generation int
+
+	// loadTimeout bounds how long a (re)launch may take to load the model.
+	// Loading a split model streams weights over Wi-Fi, so this must be generous.
+	loadTimeout time.Duration
+
+	// placement is parsed from llama-server's own load log: how many MiB of
+	// model weights each device (local GPU, CPU, or RPC node) actually holds.
+	placement []devicePlacement
+	offloaded string // e.g. "29/29" layers offloaded to non-CPU devices
 }
+
+// devicePlacement is one line of llama.cpp's "model buffer size" report.
+type devicePlacement struct {
+	Device string  `json:"device"` // e.g. "CUDA0", "RPC0[192.168.1.38:50052]", "CPU_Mapped"
+	MiB    float64 `json:"mib"`
+}
+
+// pipelineInfo is the observable state of the big-tier pipeline.
+type pipelineInfo struct {
+	Generation int               `json:"generation"`
+	State      string            `json:"state"` // down | loading | ready
+	RPCWorkers []string          `json:"rpc_workers"`
+	Devices    []devicePlacement `json:"devices"`
+	Offloaded  string            `json:"offloaded"`
+	Split      bool              `json:"split"` // true only if a remote RPC device holds weights
+}
+
+var (
+	reBuffer    = regexp.MustCompile(`load_tensors:\s+(\S+) model buffer size\s*=\s*([\d.]+) MiB`)
+	reOffloaded = regexp.MustCompile(`offloaded (\d+/\d+) layers`)
+)
 
 func newSupervisor() (*supervisor, bool) {
 	ls := os.Getenv("HYPERPOT_LLAMA_SERVER")
@@ -70,9 +107,17 @@ func newSupervisor() (*supervisor, bool) {
 	if rw := os.Getenv("HYPERPOT_RPC_WORKERS"); rw != "" {
 		for _, p := range strings.Split(rw, ",") {
 			if p = strings.TrimSpace(p); p != "" {
+				if isLocalEndpoint(p) {
+					log.Printf("supervisor: ignoring RPC worker %s (it is this machine; its GPU is already the local device)", p)
+					continue
+				}
 				workers = append(workers, p)
 			}
 		}
+	}
+	loadSecs, err := strconv.Atoi(envDefault("HYPERPOT_LOAD_TIMEOUT_SECS", "300"))
+	if err != nil || loadSecs <= 0 {
+		loadSecs = 300
 	}
 	return &supervisor{
 		llamaServer: ls,
@@ -83,7 +128,34 @@ func newSupervisor() (*supervisor, bool) {
 		smallModel:  os.Getenv("HYPERPOT_SMALL_MODEL"), // optional
 		smallPort:   envDefault("HYPERPOT_SMALL_PORT", "9932"),
 		rpcWorkers:  workers,
+		loadTimeout: time.Duration(loadSecs) * time.Second,
 	}, true
+}
+
+// localIPs returns every IP address bound to this machine.
+func localIPs() map[string]bool {
+	ips := map[string]bool{"127.0.0.1": true, "::1": true, "localhost": true}
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ips
+	}
+	for _, a := range addrs {
+		if ipn, ok := a.(*net.IPNet); ok {
+			ips[ipn.IP.String()] = true
+		}
+	}
+	return ips
+}
+
+// isLocalEndpoint reports whether host:port points at this machine. Splitting
+// "over" our own rpc-server would put the same GPU in the pipeline twice, which
+// is not a real split, so such endpoints are excluded from the pool.
+func isLocalEndpoint(endpoint string) bool {
+	host, _, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return false
+	}
+	return localIPs()[host]
 }
 
 func envDefault(k, d string) string {
@@ -193,6 +265,9 @@ func (s *supervisor) launchLocked(workers []string) error {
 		"--host", s.host,
 		"--port", s.port,
 		"-c", envDefault("HYPERPOT_CTX", "2048"),
+		// Verbosity 4 makes llama.cpp print where every model buffer lives
+		// ("<device> model buffer size = N MiB"). We parse that as ground truth.
+		"-lv", "4",
 	}
 	if len(workers) > 0 {
 		args = append(args, "--rpc", strings.Join(workers, ","))
@@ -203,17 +278,52 @@ func (s *supervisor) launchLocked(workers []string) error {
 	}
 
 	cmd := exec.Command(s.llamaServer, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("stdout pipe: %w", err)
+	}
+	cmd.Stderr = cmd.Stdout // llama.cpp logs to stderr; merge into one stream
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start llama-server: %w", err)
 	}
 	s.cmd = cmd
 	s.running = true
+	s.ready = false
+	s.placement = nil
+	s.offloaded = ""
 	s.rpcWorkers = workers
 	s.generation++
 	gen := s.generation
 	log.Printf("supervisor: launched llama-server (gen %d) split over %v", gen, workers)
+
+	// Stream llama-server's log: keep only the useful lines, and capture the
+	// device placement it reports while loading.
+	go func() {
+		sc := bufio.NewScanner(stdout)
+		sc.Buffer(make([]byte, 64*1024), 1024*1024)
+		for sc.Scan() {
+			line := sc.Text()
+			if m := reBuffer.FindStringSubmatch(line); m != nil {
+				mib, _ := strconv.ParseFloat(m[2], 64)
+				s.mu.Lock()
+				if s.generation == gen {
+					s.placement = append(s.placement, devicePlacement{Device: m[1], MiB: mib})
+				}
+				s.mu.Unlock()
+				log.Printf("placement (gen %d): %s holds %.1f MiB of model weights", gen, m[1], mib)
+			} else if m := reOffloaded.FindStringSubmatch(line); m != nil {
+				s.mu.Lock()
+				if s.generation == gen {
+					s.offloaded = m[1]
+				}
+				s.mu.Unlock()
+				log.Printf("placement (gen %d): offloaded %s layers to non-CPU devices", gen, m[1])
+			} else if strings.Contains(line, " E ") || strings.Contains(line, "RPC") ||
+				strings.Contains(line, "eval time") || strings.Contains(line, "listening") {
+				log.Printf("llama-server[%d] %s", gen, strings.TrimSpace(line))
+			}
+		}
+	}()
 
 	// Reap the process in the background; mark not-running on exit.
 	go func() {
@@ -221,6 +331,7 @@ func (s *supervisor) launchLocked(workers []string) error {
 		s.mu.Lock()
 		if s.generation == gen {
 			s.running = false
+			s.ready = false
 			log.Printf("supervisor: llama-server (gen %d) exited: %v", gen, err)
 		}
 		s.mu.Unlock()
@@ -233,25 +344,110 @@ func (s *supervisor) stopLocked() {
 		_ = s.cmd.Process.Kill()
 	}
 	s.running = false
+	s.ready = false
 	s.cmd = nil
 }
 
-// waitReady polls llama-server's /health until ready or timeout.
+// waitReady polls llama-server's /health until ready, the process exits, or
+// timeout. A 503 from /health means "still loading"; we keep waiting.
 func (s *supervisor) waitReady(timeout time.Duration) error {
+	s.mu.Lock()
+	gen := s.generation
+	s.mu.Unlock()
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 3 * time.Second}
 	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		running, sameGen := s.running, s.generation == gen
+		s.mu.Unlock()
+		if !sameGen {
+			return fmt.Errorf("pipeline was relaunched while waiting")
+		}
+		if !running {
+			return fmt.Errorf("llama-server exited while loading")
+		}
 		resp, err := client.Get(s.baseURL() + "/health")
 		if err == nil {
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
+				s.mu.Lock()
+				if s.generation == gen {
+					s.ready = true
+				}
+				s.mu.Unlock()
 				return nil
 			}
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 	return fmt.Errorf("llama-server not ready within %s", timeout)
+}
+
+// ensure makes the big-tier pipeline usable: if no llama-server is running it
+// launches one over workersFn(), then waits until it is ready. Calls are
+// serialized so the infer path and the monitor can never launch two
+// pipelines at once or kill one that is still loading.
+func (s *supervisor) ensure(workersFn func() []string) error {
+	s.rebuildMu.Lock()
+	defer s.rebuildMu.Unlock()
+	s.mu.Lock()
+	if !s.running {
+		if err := s.launchLocked(workersFn()); err != nil {
+			s.mu.Unlock()
+			return err
+		}
+	}
+	ready := s.ready
+	s.mu.Unlock()
+	if ready {
+		return nil
+	}
+	return s.waitReady(s.loadTimeout)
+}
+
+// info returns the observable state of the big-tier pipeline.
+func (s *supervisor) info() pipelineInfo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state := "down"
+	if s.running {
+		state = "loading"
+		if s.ready {
+			state = "ready"
+		}
+	}
+	devs := append([]devicePlacement(nil), s.placement...)
+	split := false
+	for _, d := range devs {
+		if strings.HasPrefix(d.Device, "RPC") && d.MiB > 0 {
+			split = true
+		}
+	}
+	return pipelineInfo{
+		Generation: s.generation,
+		State:      state,
+		RPCWorkers: append([]string(nil), s.rpcWorkers...),
+		Devices:    devs,
+		Offloaded:  s.offloaded,
+		Split:      split,
+	}
+}
+
+// describe renders the real placement, e.g.
+// "CUDA0 1262 MiB + RPC0[192.168.1.38:50052] 1002 MiB".
+func (p pipelineInfo) describe() string {
+	var parts []string
+	for _, d := range p.Devices {
+		if d.MiB <= 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s %.0f MiB", d.Device, d.MiB))
+	}
+	if len(parts) == 0 {
+		return "placement unknown"
+	}
+	return strings.Join(parts, " + ")
 }
 
 func (s *supervisor) isRunning() bool {
@@ -311,24 +507,13 @@ func (s *supervisor) monitorWorkers(healthyFn func() []string) {
 		}
 
 		log.Printf("monitor: supervised llama-server EXITED (remote node died) -> rebuilding over survivors")
-		survivors := healthyFn()
-		s.mu.Lock()
-		// Re-check: another path may already be rebuilding.
-		if s.running {
-			s.mu.Unlock()
+		if err := s.ensure(healthyFn); err != nil {
+			log.Printf("monitor: rebuild failed: %v (retrying in 5s)", err)
+			time.Sleep(5 * time.Second)
 			continue
 		}
-		if err := s.launchLocked(survivors); err != nil {
-			log.Printf("monitor: rebuild launch failed: %v", err)
-			s.mu.Unlock()
-			continue
-		}
-		s.mu.Unlock()
-		if err := s.waitReady(90 * time.Second); err != nil {
-			log.Printf("monitor: rebuilt pipeline not ready: %v", err)
-		} else {
-			log.Printf("monitor: pipeline REBUILT over survivors %v and ready", survivors)
-		}
+		info := s.info()
+		log.Printf("monitor: pipeline REBUILT (gen %d) over %v -> %s", info.Generation, info.RPCWorkers, info.describe())
 	}
 }
 

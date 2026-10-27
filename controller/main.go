@@ -18,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -108,7 +109,7 @@ func (r *registry) healthyRPCEndpoints() []string {
 	defer r.mu.Unlock()
 	var eps []string
 	for _, w := range r.workers {
-		if w.healthy() && w.RPCAddr != "" {
+		if w.healthy() && w.RPCAddr != "" && !isLocalEndpoint(w.RPCAddr) {
 			eps = append(eps, w.RPCAddr)
 		}
 	}
@@ -140,6 +141,9 @@ type inferResp struct {
 	WorkerID string `json:"worker_id,omitempty"`
 	Text     string `json:"text,omitempty"`
 	Error    string `json:"error,omitempty"`
+	// Placement is where the model weights really live, from llama.cpp's log.
+	Placement string `json:"placement,omitempty"`
+	Split     bool   `json:"split"`
 }
 
 // workerRunReq/Resp mirror the worker's POST /run contract.
@@ -160,6 +164,8 @@ type server struct {
 	reg    *registry
 	client *http.Client
 	sup    *supervisor // non-nil when supervisor (Path A) mode is active
+	// pool returns the RPC endpoints the big-tier pipeline may split across.
+	pool func() []string
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -237,47 +243,71 @@ func (s *server) handleInferSmall(w http.ResponseWriter, req inferReq) {
 		writeJSON(w, http.StatusBadGateway, inferResp{OK: false, Error: fmt.Sprintf("small tier inference failed: %v", err)})
 		return
 	}
-	writeJSON(w, http.StatusOK, inferResp{OK: true, WorkerID: "small-1B", Text: text})
+	writeJSON(w, http.StatusOK, inferResp{OK: true, WorkerID: "small tier · 1B", Text: text, Placement: "this laptop only (no split)"})
 }
 
-// handleInferSupervised runs the prompt through the supervised split pipeline,
-// and on failure (node death / llama-server crash) recovers once and re-runs.
+// handleInferSupervised runs the prompt through the supervised split pipeline.
+//
+// Rules (each one fixes a bug seen in testing):
+//   - If the pipeline is still LOADING, wait for it. Loading is not failure.
+//   - A 503 "Loading model" reply is also treated as "wait", never as death.
+//   - Only rebuild when the llama-server process has actually EXITED (the
+//     verified signal that a remote node died). A live process is never killed.
+//   - The response reports where the weights really are, parsed from
+//     llama.cpp's own load log, instead of a fixed label.
 func (s *server) handleInferSupervised(w http.ResponseWriter, req inferReq) {
-	const maxAttempts = 2
+	const maxAttempts = 3
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if !s.sup.isRunning() {
-			log.Printf("infer: pipeline down, (re)building split over survivors (attempt %d)", attempt)
-			if err := s.recoverPipeline(); err != nil {
-				lastErr = fmt.Errorf("recovery failed: %w", err)
-				continue
-			}
+		if err := s.sup.ensure(s.pool); err != nil {
+			lastErr = fmt.Errorf("pipeline not available: %w", err)
+			log.Printf("infer attempt %d: %v", attempt, lastErr)
+			continue
 		}
 		text, err := s.sup.completion(context.Background(), req.Prompt, req.NPredict)
 		if err == nil {
-			writeJSON(w, http.StatusOK, inferResp{OK: true, WorkerID: "big-3B-split", Text: text})
+			info := s.sup.info()
+			label := "big tier · local only"
+			if info.Split {
+				label = "big tier · split"
+			}
+			writeJSON(w, http.StatusOK, inferResp{
+				OK:        true,
+				WorkerID:  label,
+				Text:      text,
+				Placement: info.describe(),
+				Split:     info.Split,
+			})
 			return
 		}
 		lastErr = err
-		log.Printf("infer attempt %d failed: %v -- the pipeline likely lost a node; will recover and re-run", attempt, err)
-		// Mark pipeline down so the next loop recovers.
-		s.sup.mu.Lock()
-		s.sup.stopLocked()
-		s.sup.mu.Unlock()
+		if strings.Contains(err.Error(), "status 503") {
+			log.Printf("infer attempt %d: model still loading, waiting", attempt)
+			continue // ensure() will wait for readiness on the next loop
+		}
+		if s.sup.isRunning() {
+			// Process is alive: this is a request error, not a dead node.
+			log.Printf("infer attempt %d failed but llama-server is still running: %v", attempt, err)
+			break
+		}
+		log.Printf("infer attempt %d failed and llama-server exited (a node died): %v -- rebuilding and re-running", attempt, err)
 	}
-	writeJSON(w, http.StatusBadGateway, inferResp{OK: false, Error: fmt.Sprintf("inference failed after recovery: %v", lastErr)})
+	writeJSON(w, http.StatusBadGateway, inferResp{OK: false, Error: fmt.Sprintf("inference failed: %v", lastErr)})
 }
 
-// recoverPipeline relaunches llama-server over the currently-healthy RPC workers.
-func (s *server) recoverPipeline() error {
-	workers := s.reg.healthyRPCEndpoints()
-	s.sup.mu.Lock()
-	err := s.sup.launchLocked(workers)
-	s.sup.mu.Unlock()
-	if err != nil {
-		return err
+// handlePipeline reports the big-tier pipeline's real state and placement.
+func (s *server) handlePipeline(w http.ResponseWriter, r *http.Request) {
+	if s.sup == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "enabled": false})
+		return
 	}
-	return s.sup.waitReady(90 * time.Second)
+	info := s.sup.info()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":          true,
+		"enabled":     true,
+		"pipeline":    info,
+		"description": info.describe(),
+	})
 }
 
 // handleInferDispatch is the Phase 1 path: send the whole prompt to one worker.
@@ -314,6 +344,9 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		worker
 		Healthy      bool    `json:"healthy"`
 		LastSeenSecs float64 `json:"last_seen_secs"`
+		// Local is true when this worker runs on the controller's own laptop.
+		// It is shown in the dashboard but never used as a remote split node.
+		Local bool `json:"local"`
 	}
 	snap := s.reg.snapshot()
 	rows := make([]row, 0, len(snap))
@@ -322,6 +355,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			worker:       wk,
 			Healthy:      wk.healthy(),
 			LastSeenSecs: time.Since(wk.LastHeartbeat).Seconds(),
+			Local:        wk.RPCAddr != "" && isLocalEndpoint(wk.RPCAddr),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "workers": rows})
@@ -346,39 +380,39 @@ func main() {
 		s.sup = sup
 		log.Printf("supervisor mode ENABLED (llama-server=%s model=%s)", sup.llamaServer, sup.model)
 
-		// Proactive dead-node monitor: probes active RPC workers and rebuilds the
-		// pipeline over survivors the moment one dies. healthyFn prefers the live
-		// registry; if empty (explicit-workers mode), it filters the configured
-		// workers by TCP reachability.
-		healthyFn := func() []string {
-			if eps := s.reg.healthyRPCEndpoints(); len(eps) > 0 {
-				return eps
-			}
-			var alive []string
-			for _, ep := range sup.activeWorkers() {
-				if probeAlive(ep, 2*time.Second) {
-					alive = append(alive, ep)
+		// The pool used for every (re)build: auto-discovered workers plus any
+		// explicitly configured ones that are reachable. The controller's own
+		// laptop is never included (its GPU is already the local device).
+		// Probing is safe here: it only runs when no llama-server holds the
+		// single-client RPC connections.
+		configured := append([]string(nil), sup.rpcWorkers...)
+		s.pool = func() []string {
+			seen := map[string]bool{}
+			var out []string
+			for _, ep := range s.reg.healthyRPCEndpoints() {
+				if !seen[ep] {
+					seen[ep] = true
+					out = append(out, ep)
 				}
 			}
-			return alive
+			for _, ep := range configured {
+				if !seen[ep] && probeAlive(ep, 2*time.Second) {
+					seen[ep] = true
+					out = append(out, ep)
+				}
+			}
+			return out
 		}
-		go sup.monitorWorkers(healthyFn)
-		// If explicit RPC workers were provided, launch the split pipeline now.
-		// Otherwise it launches lazily on the first /infer once workers register.
-		if len(sup.rpcWorkers) > 0 {
+		go sup.monitorWorkers(s.pool)
+		// If explicit RPC workers were provided, load the split now so the first
+		// request does not pay the load time. Otherwise it loads on first /infer.
+		if len(configured) > 0 {
 			go func() {
-				sup.mu.Lock()
-				err := sup.launchLocked(sup.rpcWorkers)
-				sup.mu.Unlock()
-				if err != nil {
-					log.Printf("supervisor: initial launch failed: %v", err)
+				if err := sup.ensure(s.pool); err != nil {
+					log.Printf("supervisor: initial pipeline not ready: %v", err)
 					return
 				}
-				if err := sup.waitReady(90 * time.Second); err != nil {
-					log.Printf("supervisor: initial pipeline not ready: %v", err)
-				} else {
-					log.Printf("supervisor: pipeline ready at %s", sup.baseURL())
-				}
+				log.Printf("supervisor: pipeline ready at %s -> %s", sup.baseURL(), sup.info().describe())
 			}()
 		}
 	} else {
@@ -390,6 +424,7 @@ func main() {
 	mux.HandleFunc("POST /heartbeat", s.handleHeartbeat)
 	mux.HandleFunc("POST /infer", s.handleInfer)
 	mux.HandleFunc("GET /status", s.handleStatus)
+	mux.HandleFunc("GET /pipeline", s.handlePipeline)
 
 	log.Printf("HyperPot controller listening on %s", addr)
 	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {

@@ -18,7 +18,7 @@ import {
   IconServer,
   IconX,
 } from "@tabler/icons-react";
-import { CONTROLLER, fetchStatus, infer, type Worker } from "./api";
+import { CONTROLLER, fetchPipeline, fetchStatus, infer, type Pipeline, type Worker } from "./api";
 import "./App.css";
 
 type Page = "overview" | "nodes" | "playground";
@@ -64,6 +64,8 @@ export default function App() {
   const [tier, setTier] = useState<"small" | "big">("big");
   const [answer, setAnswer] = useState("");
   const [servedBy, setServedBy] = useState("");
+  const [placement, setPlacement] = useState("");
+  const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -86,6 +88,7 @@ export default function App() {
         }
       }
       setWorkers(list);
+      setPipeline(await fetchPipeline().catch(() => null));
       setOnline(true);
       setSelected((cur) => (cur ? (list.find((w) => w.worker_id === cur.worker_id) ?? cur) : cur));
     } catch {
@@ -153,6 +156,7 @@ export default function App() {
     setBusy(true);
     setAnswer("");
     setServedBy("");
+    setPlacement("");
     setElapsed(null);
     const t0 = performance.now();
     try {
@@ -161,6 +165,7 @@ export default function App() {
       if (d.ok) {
         setAnswer(d.text ?? "");
         setServedBy(d.worker_id ?? "");
+        setPlacement(d.placement ?? "");
       } else setAnswer(`Error: ${d.error ?? "unknown"}`);
     } catch (e) {
       setAnswer(`Request failed: ${String(e)}`);
@@ -173,8 +178,10 @@ export default function App() {
   const V = 460;
   const C = V / 2;
   const R = 150;
-  const pos = workers.map((_, i) => {
-    const a = ((-90 + (360 / Math.max(workers.length, 1)) * i) * Math.PI) / 180;
+  const remote = workers.filter((w) => !w.local);
+  const localNode = workers.find((w) => w.local);
+  const pos = remote.map((_, i) => {
+    const a = ((-90 + (360 / Math.max(remote.length, 1)) * i) * Math.PI) / 180;
     return { x: C + R * Math.cos(a), y: C + R * Math.sin(a) };
   });
 
@@ -275,8 +282,16 @@ export default function App() {
                   <div className={`stat-v ${down ? "down" : ""}`}>{down}</div>
                 </div>
                 <div className="stat">
-                  <div className="stat-l">Model tiers</div>
-                  <div className="stat-v sm">1B · 3B</div>
+                  <div className="stat-l">Big-tier model (3B)</div>
+                  <div className={`stat-v sm ${pipeline?.split ? "ok" : ""}`}>
+                    {!pipeline || pipeline.state === "down"
+                      ? "Not loaded"
+                      : pipeline.state === "loading"
+                        ? "Loading…"
+                        : pipeline.split
+                          ? "Split"
+                          : "Local only"}
+                  </div>
                 </div>
               </div>
 
@@ -288,21 +303,21 @@ export default function App() {
                 <svg className="topo" viewBox={`0 0 ${V} ${V}`} role="img" aria-label="Cluster topology">
                   {pos.map((p, i) => (
                     <line
-                      key={`l${workers[i].worker_id}`}
+                      key={`l${remote[i].worker_id}`}
                       x1={C}
                       y1={C}
                       x2={p.x}
                       y2={p.y}
-                      className={`link ${workers[i].healthy ? "link-ok" : "link-down"}`}
+                      className={`link ${remote[i].healthy ? "link-ok" : "link-down"}`}
                     />
                   ))}
                   <g className="hub">
                     <circle cx={C} cy={C} r={42} />
                     <text x={C} y={C - 3} className="hub-t">Controller</text>
-                    <text x={C} y={C + 13} className="hub-s">this laptop</text>
+                    <text x={C} y={C + 13} className="hub-s">{localNode ? `this laptop · ${localNode.gpu}` : "this laptop"}</text>
                   </g>
                   {pos.map((p, i) => {
-                    const w = workers[i];
+                    const w = remote[i];
                     return (
                       <g
                         key={`n${w.worker_id}`}
@@ -319,6 +334,45 @@ export default function App() {
                 </svg>
                 {workers.length === 0 && (
                   <p className="empty">Waiting for laptops on this Wi-Fi. Start a worker and it appears here.</p>
+                )}
+              </section>
+
+              <section className="card place-card">
+                <div className="card-head">
+                  <h2>Big-tier model placement</h2>
+                  <span className="muted">
+                    Reported by llama.cpp while loading
+                    {pipeline && pipeline.generation > 0 && <> · build {pipeline.generation}</>}
+                  </span>
+                </div>
+                {!pipeline || !pipeline.devices || pipeline.devices.length === 0 ? (
+                  <p className="empty">
+                    {pipeline?.state === "loading" ? "Loading the model…" : "Not loaded yet. Send a Big-tier prompt to load it."}
+                  </p>
+                ) : (
+                  <div className="place-list">
+                    {(() => {
+                      const total = pipeline.devices.reduce((a, d) => a + d.mib, 0) || 1;
+                      return pipeline.devices.map((d) => {
+                        const remoteDev = d.device.startsWith("RPC");
+                        return (
+                          <div key={d.device} className="place-row">
+                            <span className="place-dev mono">{d.device}</span>
+                            <span className="place-where">{remoteDev ? "remote laptop" : d.device.startsWith("CPU") ? "this laptop · RAM" : "this laptop · GPU"}</span>
+                            <div className="place-bar">
+                              <span className={remoteDev ? "remote" : ""} style={{ width: `${(d.mib / total) * 100}%` }} />
+                            </div>
+                            <span className="num place-mib">{d.mib.toFixed(0)} MiB</span>
+                          </div>
+                        );
+                      });
+                    })()}
+                    <div className="place-foot muted">
+                      {pipeline.split
+                        ? "Split: part of the model runs on a remote laptop."
+                        : "Not split: the whole model is on this laptop."}
+                    </div>
+                  </div>
                 )}
               </section>
             </>
@@ -379,7 +433,10 @@ export default function App() {
                               <OsIcon os={w.os} />
                             </span>
                             <div>
-                              <div className="node-name">{w.worker_id}</div>
+                              <div className="node-name">
+                                {w.worker_id}
+                                {w.local && <span className="tag tag-inline">This laptop</span>}
+                              </div>
                               <div className="node-sub">{w.address.replace("http://", "")}</div>
                             </div>
                           </div>
@@ -459,6 +516,11 @@ export default function App() {
                       <div className="served">
                         <span className="tag">{servedBy}</span>
                         {elapsed !== null && <span className="muted num">{elapsed.toFixed(1)}s</span>}
+                      </div>
+                    )}
+                    {placement && (
+                      <div className="placement">
+                        <span className="muted">Weights on:</span> <span className="mono">{placement}</span>
                       </div>
                     )}
                     <p>{busy ? "Generating…" : answer}</p>
