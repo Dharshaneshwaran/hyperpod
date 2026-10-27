@@ -38,6 +38,18 @@ struct HeartbeatReq {
     worker_id: String,
 }
 
+// Broadcast payload for LAN auto-discovery (matches the controller's listener).
+#[derive(Serialize)]
+struct DiscoveryAnnounce {
+    #[serde(rename = "type")]
+    kind: String, // "hyperpot-worker"
+    worker_id: String,
+    address: String,  // http base, e.g. http://192.168.1.38:9100
+    rpc_addr: String, // host:port of this worker's ggml-rpc-server
+    gpu: String,
+    os: String,
+}
+
 #[derive(Deserialize)]
 struct RunReq {
     prompt: String,
@@ -126,6 +138,48 @@ fn start_heartbeat(cfg: Config) {
             match ureq::post(&format!("{}/heartbeat", cfg.controller)).send_json(&req) {
                 Ok(_) => {}
                 Err(e) => eprintln!("[worker] heartbeat failed: {e}"),
+            }
+            thread::sleep(Duration::from_secs(3));
+        }
+    });
+}
+
+/// LAN auto-discovery: periodically UDP-broadcast this worker's presence so the
+/// controller can auto-register it without any manual IP configuration.
+fn start_discovery_broadcast(cfg: Config) {
+    const DISCOVERY_PORT: u16 = 50999;
+    thread::spawn(move || {
+        let socket = match std::net::UdpSocket::bind("0.0.0.0:0") {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[worker] discovery: could not open UDP socket: {e}");
+                return;
+            }
+        };
+        if let Err(e) = socket.set_broadcast(true) {
+            eprintln!("[worker] discovery: set_broadcast failed: {e}");
+            return;
+        }
+        let announce = DiscoveryAnnounce {
+            kind: "hyperpot-worker".to_string(),
+            worker_id: cfg.worker_id.clone(),
+            address: cfg.advertise.clone(),
+            rpc_addr: env_or("HYPERPOT_RPC_ADVERTISE", ""),
+            gpu: env_or("HYPERPOT_GPU", "unknown"),
+            os: detect_os(),
+        };
+        let payload = match serde_json::to_vec(&announce) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[worker] discovery: serialize failed: {e}");
+                return;
+            }
+        };
+        let target = format!("255.255.255.255:{DISCOVERY_PORT}");
+        println!("[worker] discovery: broadcasting presence to {target} every 3s");
+        loop {
+            if let Err(e) = socket.send_to(&payload, &target) {
+                eprintln!("[worker] discovery: broadcast failed: {e}");
             }
             thread::sleep(Duration::from_secs(3));
         }
@@ -240,6 +294,7 @@ fn main() {
     // Register, then start heartbeats.
     register(&cfg);
     start_heartbeat(cfg.clone());
+    start_discovery_broadcast(cfg.clone());
 
     // Serve /run.
     let server = tiny_http::Server::http(&cfg.bind)

@@ -53,9 +53,19 @@ func newRegistry() *registry {
 func (r *registry) register(w *worker) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	_, existed := r.workers[w.ID]
 	w.LastHeartbeat = time.Now()
 	r.workers[w.ID] = w
-	log.Printf("registered worker %q (%s, %s) at %s", w.ID, w.GPU, w.OS, w.Address)
+	if !existed {
+		log.Printf("registered worker %q (%s, %s) at %s", w.ID, w.GPU, w.OS, w.Address)
+	}
+}
+
+func (r *registry) isKnown(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.workers[id]
+	return ok
 }
 
 func (r *registry) heartbeat(id string) bool {
@@ -327,6 +337,9 @@ func main() {
 		reg:    newRegistry(),
 		client: &http.Client{Timeout: 120 * time.Second},
 	}
+
+	// LAN auto-discovery: listen for worker UDP broadcasts and auto-register them.
+	go s.startDiscovery()
 
 	// Supervisor (Path A) mode: active only if llama-server + model are configured.
 	if sup, ok := newSupervisor(); ok {
