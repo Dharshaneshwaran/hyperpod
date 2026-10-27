@@ -337,14 +337,20 @@ func (s *supervisor) completion(ctx context.Context, prompt string, nPredict int
 	return s.completionAt(ctx, s.baseURL(), prompt, nPredict)
 }
 
-// completionAt sends a prompt to a specific llama-server base URL.
+// completionAt sends a prompt to a specific llama-server base URL using the
+// OpenAI-compatible chat endpoint (/v1/chat/completions). This makes llama-server
+// apply the model's CHAT TEMPLATE, so the model answers cleanly instead of
+// drifting into raw instruction tokens like [INST]/<<SYS>> (which happens when
+// posting an un-templated prompt to the raw /completion endpoint).
 func (s *supervisor) completionAt(ctx context.Context, base, prompt string, nPredict int) (string, error) {
 	body, _ := json.Marshal(map[string]any{
-		"prompt":    prompt,
-		"n_predict": nPredict,
-		"stream":    false,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+		"max_tokens": nPredict,
+		"stream":     false,
 	})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+"/completion", bytes.NewReader(body))
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Timeout: 180 * time.Second}
 	resp, err := client.Do(req)
@@ -357,10 +363,17 @@ func (s *supervisor) completionAt(ctx context.Context, base, prompt string, nPre
 		return "", fmt.Errorf("llama-server status %d: %s", resp.StatusCode, string(raw))
 	}
 	var out struct {
-		Content string `json:"content"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return "", fmt.Errorf("bad llama-server response: %w", err)
 	}
-	return strings.TrimSpace(out.Content), nil
+	if len(out.Choices) == 0 {
+		return "", fmt.Errorf("llama-server returned no choices")
+	}
+	return strings.TrimSpace(out.Choices[0].Message.Content), nil
 }
