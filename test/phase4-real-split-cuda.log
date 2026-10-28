@@ -1,0 +1,22 @@
+HyperPot — real 3B split across ROG + TUF (CUDA), measured 28 Oct 2026
+======================================================================
+Hardware: ROG RTX 3050 (local, controller) + TUF RTX 4050 (llama.cpp b11909
+CUDA 12.4 ggml-rpc-server, started with -c cache). Same llama.cpp release on
+both sides (ROG built from commit caa8191 = tag b11909, RPC proto 8.0.1).
+TUF reports RPC0 device = 6140 MiB (its 4050 VRAM, i.e. CUDA, not CPU).
+
+Placement, parsed from llama.cpp's own load log (-lv 4):
+  CPU_Mapped               308 MiB  (ROG RAM: token embeddings)
+  CUDA0                    552 MiB  (ROG RTX 3050)
+  RPC0[192.168.1.5:50052] 1366 MiB  (TUF RTX 4050)
+  offloaded 29/29 layers to non-CPU devices; split=true
+
+Bug fixed during this run: --tensor-split order. Measured:
+  -ts 1,4 -> CUDA0 1573 / RPC0 345 MiB ;  -ts 4,1 -> CUDA0 552 / RPC0 1366 MiB
+  => order is RPC devices first, local device last.
+
+Load times (ROG Wi-Fi uplink 26-29 Mbit/s, -66..-68 dBm):
+  first load (TUF cache empty) : ~16.5 min (1366 MiB uploaded)
+  second load (TUF -c cache)   :  240 s
+Answer (split): "Teamwork is a collaborative approach to achieving a common goal..."
+  generation 6.5 tok/s split vs ~70 tok/s ROG-only (every token crosses Wi-Fi)
