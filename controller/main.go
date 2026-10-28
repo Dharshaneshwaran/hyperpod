@@ -299,6 +299,12 @@ func (s *server) handleInferSupervised(w http.ResponseWriter, req inferReq) {
 			log.Printf("infer attempt %d: model still loading, waiting", attempt)
 			continue // ensure() will wait for readiness on the next loop
 		}
+		// When a remote node dies, the HTTP request usually fails (EOF) a moment
+		// before llama-server finishes aborting. Give it a few seconds to exit
+		// before deciding this was an ordinary request error.
+		for i := 0; i < 20 && s.sup.isRunning(); i++ {
+			time.Sleep(250 * time.Millisecond)
+		}
 		if s.sup.isRunning() {
 			// Process is alive: this is a request error, not a dead node.
 			log.Printf("infer attempt %d failed but llama-server is still running: %v", attempt, err)

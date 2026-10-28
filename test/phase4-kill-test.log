@@ -1,0 +1,30 @@
+HyperPot — kill test on the real 3B split (ROG + TUF CUDA), 28 Oct 2026
+======================================================================
+Split (from llama.cpp load log, cached load ready after 137 s):
+  CPU_Mapped 308 MiB + CUDA0 552 MiB + RPC0[192.168.1.5:50052] 1366 MiB
+Prompts every ~20 s; operator pressed Ctrl+C on the TUF rpc-server ~20:24.
+
+[20:24:15] prompt 12 -> ok split=True  (ROG 552 + TUF 1366 MiB)  "Kangaroo"
+[20:24:41] prompt 13 -> FAILED: request EOF while the node died
+[20:25:01] prompt 14 -> ok split=False (ROG only: CUDA0 1918 MiB) "Koala"
+
+Controller log:
+  20:24:41 infer attempt 1 failed but llama-server is still running: ... EOF
+  20:24:41 llama-server (gen 1) exited: signal: aborted (core dumped)
+  20:24:41 monitor: llama-server EXITED (remote node died) -> rebuilding
+  20:24:43 launched llama-server (gen 2) split over []   (TUF excluded)
+  20:24:44 placement (gen 2): CUDA0 1918 MiB
+
+Result: node death detected and rebuilt on the survivor in ~3 s; next
+prompt answered. Gap: the in-flight request was lost (race: HTTP EOF arrived
+milliseconds before the process exit was observed, so it was classed as an
+ordinary request error).
+
+Fix: on a failed request, wait up to 5 s for llama-server to exit before
+classifying. Verified by aborting llama-server (SIGABRT, same signal as an RPC
+abort) mid-generation on the ROG:
+  20:31:18 exited: signal: aborted
+  20:31:18 infer attempt 1 failed and llama-server exited (a node died) -- rebuilding and re-running
+  20:31:19 pipeline ready (gen 2) after 2s
+  -> the SAME request returned ok=true with the story.
+Not yet re-run with a real TUF kill.
