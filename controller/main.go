@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -144,6 +145,8 @@ type inferResp struct {
 	// Placement is where the model weights really live, from llama.cpp's log.
 	Placement string `json:"placement,omitempty"`
 	Split     bool   `json:"split"`
+	// Loading is true when the big-tier model is still loading.
+	Loading bool `json:"loading,omitempty"`
 }
 
 // workerRunReq/Resp mirror the worker's POST /run contract.
@@ -259,7 +262,18 @@ func (s *server) handleInferSupervised(w http.ResponseWriter, req inferReq) {
 	const maxAttempts = 3
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if err := s.sup.ensure(s.pool); err != nil {
+		if err := s.sup.ensure(s.pool, s.sup.inferWait); err != nil {
+			if errors.Is(err, errLoading) {
+				// Still loading: answer now instead of hanging. The load continues.
+				info := s.sup.info()
+				writeJSON(w, http.StatusServiceUnavailable, inferResp{
+					OK:      false,
+					Loading: true,
+					Error: fmt.Sprintf("big-tier model is still loading (%.0fs so far); try again shortly",
+						info.LoadingSecs),
+				})
+				return
+			}
 			lastErr = fmt.Errorf("pipeline not available: %w", err)
 			log.Printf("infer attempt %d: %v", attempt, lastErr)
 			continue
@@ -408,11 +422,10 @@ func main() {
 		// request does not pay the load time. Otherwise it loads on first /infer.
 		if len(configured) > 0 {
 			go func() {
-				if err := sup.ensure(s.pool); err != nil {
-					log.Printf("supervisor: initial pipeline not ready: %v", err)
-					return
+				// Launch only; the readiness watcher logs "pipeline ready" when done.
+				if err := sup.ensure(s.pool, 0); err != nil {
+					log.Printf("supervisor: initial launch failed: %v", err)
 				}
-				log.Printf("supervisor: pipeline ready at %s -> %s", sup.baseURL(), sup.info().describe())
 			}()
 		}
 	} else {

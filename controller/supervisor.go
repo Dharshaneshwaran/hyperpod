@@ -17,6 +17,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -62,9 +63,13 @@ type supervisor struct {
 	// generation increments every (re)launch; used to detect restarts.
 	generation int
 
-	// loadTimeout bounds how long a (re)launch may take to load the model.
-	// Loading a split model streams weights over Wi-Fi, so this must be generous.
-	loadTimeout time.Duration
+	// inferWait is how long one /infer request will wait for a loading
+	// pipeline before answering "still loading". It never kills the load.
+	inferWait time.Duration
+
+	// startedAt/readyAfter time the current generation's load.
+	startedAt  time.Time
+	readyAfter time.Duration
 
 	// placement is parsed from llama-server's own load log: how many MiB of
 	// model weights each device (local GPU, CPU, or RPC node) actually holds.
@@ -86,6 +91,15 @@ type pipelineInfo struct {
 	Devices    []devicePlacement `json:"devices"`
 	Offloaded  string            `json:"offloaded"`
 	Split      bool              `json:"split"` // true only if a remote RPC device holds weights
+	// LoadingSecs is how long the current generation has been loading (0 once ready).
+	LoadingSecs float64 `json:"loading_secs"`
+	// ReadySecs is how long the current generation took to become ready.
+	ReadySecs float64 `json:"ready_secs"`
+}
+
+// ReadyAfter formats the load time of a ready pipeline.
+func (p pipelineInfo) ReadyAfter() string {
+	return fmt.Sprintf("%.0fs", p.ReadySecs)
 }
 
 var (
@@ -115,9 +129,9 @@ func newSupervisor() (*supervisor, bool) {
 			}
 		}
 	}
-	loadSecs, err := strconv.Atoi(envDefault("HYPERPOT_LOAD_TIMEOUT_SECS", "900"))
-	if err != nil || loadSecs <= 0 {
-		loadSecs = 900
+	waitSecs, err := strconv.Atoi(envDefault("HYPERPOT_INFER_WAIT_SECS", "120"))
+	if err != nil || waitSecs <= 0 {
+		waitSecs = 120
 	}
 	return &supervisor{
 		llamaServer: ls,
@@ -128,7 +142,7 @@ func newSupervisor() (*supervisor, bool) {
 		smallModel:  os.Getenv("HYPERPOT_SMALL_MODEL"), // optional
 		smallPort:   envDefault("HYPERPOT_SMALL_PORT", "9932"),
 		rpcWorkers:  workers,
-		loadTimeout: time.Duration(loadSecs) * time.Second,
+		inferWait:   time.Duration(waitSecs) * time.Second,
 	}, true
 }
 
@@ -296,6 +310,9 @@ func (s *supervisor) launchLocked(workers []string) error {
 	s.ready = false
 	s.placement = nil
 	s.offloaded = ""
+	s.startedAt = time.Now()
+	s.readyAfter = 0
+	readerDone := make(chan struct{})
 	s.rpcWorkers = workers
 	s.generation++
 	gen := s.generation
@@ -328,10 +345,49 @@ func (s *supervisor) launchLocked(workers []string) error {
 				log.Printf("llama-server[%d] %s", gen, strings.TrimSpace(line))
 			}
 		}
+		// If Scan stopped early (e.g. a line over 1 MiB), keep draining so
+		// llama-server never blocks writing to a full pipe.
+		_, _ = io.Copy(io.Discard, stdout)
+		close(readerDone)
 	}()
 
-	// Reap the process in the background; mark not-running on exit.
+	// Watch readiness independently of any caller, so "ready" is set the
+	// moment /health returns 200, however long loading takes. There is no
+	// timeout: a process that is still running is still loading.
 	go func() {
+		client := &http.Client{Timeout: 3 * time.Second}
+		for {
+			s.mu.Lock()
+			alive := s.running && s.generation == gen
+			s.mu.Unlock()
+			if !alive {
+				return
+			}
+			resp, err := client.Get(s.baseURL() + "/health")
+			if err == nil {
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					s.mu.Lock()
+					if s.generation == gen && s.running {
+						s.ready = true
+						s.readyAfter = time.Since(s.startedAt)
+					}
+					s.mu.Unlock()
+					info := s.info()
+					log.Printf("supervisor: pipeline ready (gen %d) after %s -> %s",
+						gen, info.ReadyAfter(), info.describe())
+					return
+				}
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}()
+
+	// Reap the process. Per os/exec, Wait must only be called after all reads
+	// from the pipe are done, so wait for the reader first.
+	go func() {
+		<-readerDone
 		err := cmd.Wait()
 		s.mu.Lock()
 		if s.generation == gen {
@@ -353,62 +409,54 @@ func (s *supervisor) stopLocked() {
 	s.cmd = nil
 }
 
-// waitReady polls llama-server's /health until ready, the process exits, or
-// timeout. A 503 from /health means "still loading"; we keep waiting.
+// errLoading means the pipeline is alive but still loading the model.
+var errLoading = errors.New("big-tier model is still loading")
+
+// waitReady waits up to timeout for the current generation to become ready.
+// It only reads flags set by the readiness watcher; it never kills anything.
 func (s *supervisor) waitReady(timeout time.Duration) error {
 	s.mu.Lock()
 	gen := s.generation
 	s.mu.Unlock()
 	deadline := time.Now().Add(timeout)
-	client := &http.Client{Timeout: 3 * time.Second}
-	for time.Now().Before(deadline) {
+	for {
 		s.mu.Lock()
-		running, sameGen := s.running, s.generation == gen
+		running, ready, sameGen := s.running, s.ready, s.generation == gen
 		s.mu.Unlock()
-		if !sameGen {
+		switch {
+		case !sameGen:
 			return fmt.Errorf("pipeline was relaunched while waiting")
-		}
-		if !running {
+		case !running:
 			return fmt.Errorf("llama-server exited while loading")
+		case ready:
+			return nil
+		case time.Now().After(deadline):
+			return errLoading
 		}
-		resp, err := client.Get(s.baseURL() + "/health")
-		if err == nil {
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				s.mu.Lock()
-				if s.generation == gen {
-					s.ready = true
-				}
-				s.mu.Unlock()
-				return nil
-			}
-		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(250 * time.Millisecond)
 	}
-	return fmt.Errorf("llama-server not ready within %s", timeout)
 }
 
-// ensure makes the big-tier pipeline usable: if no llama-server is running it
-// launches one over workersFn(), then waits until it is ready. Calls are
-// serialized so the infer path and the monitor can never launch two
-// pipelines at once or kill one that is still loading.
-func (s *supervisor) ensure(workersFn func() []string) error {
+// ensure makes sure a big-tier llama-server is running (launching one over
+// workersFn() if none is), then waits up to `wait` for it to be ready.
+// A load that outlasts `wait` returns errLoading and keeps loading.
+// Launches are serialized so two pipelines never start at once.
+func (s *supervisor) ensure(workersFn func() []string, wait time.Duration) error {
 	s.rebuildMu.Lock()
-	defer s.rebuildMu.Unlock()
 	s.mu.Lock()
 	if !s.running {
 		if err := s.launchLocked(workersFn()); err != nil {
 			s.mu.Unlock()
+			s.rebuildMu.Unlock()
 			return err
 		}
 	}
-	ready := s.ready
 	s.mu.Unlock()
-	if ready {
+	s.rebuildMu.Unlock()
+	if wait <= 0 {
 		return nil
 	}
-	return s.waitReady(s.loadTimeout)
+	return s.waitReady(wait)
 }
 
 // info returns the observable state of the big-tier pipeline.
@@ -421,6 +469,10 @@ func (s *supervisor) info() pipelineInfo {
 		if s.ready {
 			state = "ready"
 		}
+	}
+	loading := 0.0
+	if s.running && !s.ready {
+		loading = time.Since(s.startedAt).Seconds()
 	}
 	devs := append([]devicePlacement(nil), s.placement...)
 	split := false
@@ -436,6 +488,8 @@ func (s *supervisor) info() pipelineInfo {
 		Devices:    devs,
 		Offloaded:  s.offloaded,
 		Split:      split,
+		LoadingSecs: loading,
+		ReadySecs:   s.readyAfter.Seconds(),
 	}
 }
 
@@ -512,13 +566,13 @@ func (s *supervisor) monitorWorkers(healthyFn func() []string) {
 		}
 
 		log.Printf("monitor: supervised llama-server EXITED (remote node died) -> rebuilding over survivors")
-		if err := s.ensure(healthyFn); err != nil {
-			log.Printf("monitor: rebuild failed: %v (retrying in 5s)", err)
+		if err := s.ensure(healthyFn, 0); err != nil {
+			log.Printf("monitor: rebuild launch failed: %v (retrying in 5s)", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		info := s.info()
-		log.Printf("monitor: pipeline REBUILT (gen %d) over %v -> %s", info.Generation, info.RPCWorkers, info.describe())
+		log.Printf("monitor: pipeline REBUILT (gen %d) over %v; loading (ready is logged when done)", info.Generation, info.RPCWorkers)
 	}
 }
 

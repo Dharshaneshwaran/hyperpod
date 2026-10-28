@@ -20,6 +20,7 @@ export type InferResp = {
   error?: string;
   placement?: string;
   split?: boolean;
+  loading?: boolean;
 };
 
 export type DevicePlacement = { device: string; mib: number };

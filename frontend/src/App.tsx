@@ -166,7 +166,7 @@ export default function App() {
         setAnswer(d.text ?? "");
         setServedBy(d.worker_id ?? "");
         setPlacement(d.placement ?? "");
-      } else setAnswer(`Error: ${d.error ?? "unknown"}`);
+      } else setAnswer(d.loading ? `⏳ ${d.error}` : `Error: ${d.error ?? "unknown"}`);
     } catch (e) {
       setAnswer(`Request failed: ${String(e)}`);
     } finally {
