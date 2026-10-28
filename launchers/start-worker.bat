@@ -35,7 +35,7 @@ echo(
 
 REM 1) Start the RPC server in its own window.
 echo Starting ggml-rpc-server on 0.0.0.0:%RPC_PORT% ...
-start "HyperPot RPC server" cmd /k "%LLAMA_DIR%\ggml-rpc-server.exe -H 0.0.0.0 -p %RPC_PORT%"
+start "HyperPot RPC server" cmd /k "%LLAMA_DIR%\ggml-rpc-server.exe -H 0.0.0.0 -p %RPC_PORT% -c"
 
 REM give it a moment to bind
 timeout /t 2 /nobreak >nul

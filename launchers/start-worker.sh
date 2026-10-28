@@ -35,7 +35,7 @@ echo
 # 1) rpc-server (detached)
 pkill -f ggml-rpc-server 2>/dev/null || true
 sleep 1
-setsid nohup "$BIN/ggml-rpc-server" -H 0.0.0.0 -p "$RPC_PORT" >/tmp/hp-rpc.log 2>&1 </dev/null &
+setsid nohup "$BIN/ggml-rpc-server" -H 0.0.0.0 -p "$RPC_PORT" -c >/tmp/hp-rpc.log 2>&1 </dev/null &
 disown "$!" 2>/dev/null || true
 echo "started ggml-rpc-server on 0.0.0.0:$RPC_PORT (log: /tmp/hp-rpc.log)"
 sleep 2

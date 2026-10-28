@@ -115,9 +115,9 @@ func newSupervisor() (*supervisor, bool) {
 			}
 		}
 	}
-	loadSecs, err := strconv.Atoi(envDefault("HYPERPOT_LOAD_TIMEOUT_SECS", "300"))
+	loadSecs, err := strconv.Atoi(envDefault("HYPERPOT_LOAD_TIMEOUT_SECS", "900"))
 	if err != nil || loadSecs <= 0 {
-		loadSecs = 300
+		loadSecs = 900
 	}
 	return &supervisor{
 		llamaServer: ls,
@@ -240,17 +240,22 @@ func evenSplit(n int) string {
 	return strings.Join(parts, ",")
 }
 
-// remoteHeavySplit builds a tensor-split where the LOCAL device gets a small
-// share (1) and each of the nWorkers REMOTE nodes gets a large share (4), so
-// that the remote nodes genuinely hold most of the model. Losing a remote node
-// then actually breaks generation, which is what we want to recover from.
-// Layout: "local,remote1,remote2,..."
+// remoteHeavySplit builds a --tensor-split where each of the nWorkers REMOTE
+// nodes gets a large share (4) and the LOCAL device a small share (1), so the
+// remote nodes genuinely hold most of the model and losing one really breaks
+// generation.
+//
+// Order matters and is NOT the --list-devices order. Measured on llama.cpp
+// b11909 with one RPC node (3B model):
+//   -ts 1,4 -> CUDA0 1573 MiB, RPC0 345 MiB
+//   -ts 4,1 -> CUDA0  552 MiB, RPC0 1366 MiB
+// so the split order is: RPC devices first, local device last.
 func remoteHeavySplit(nWorkers int) string {
 	parts := make([]string, 0, nWorkers+1)
-	parts = append(parts, "1") // local device: small share
 	for i := 0; i < nWorkers; i++ {
 		parts = append(parts, "4") // each remote: large share
 	}
+	parts = append(parts, "1") // local device: small share
 	return strings.Join(parts, ",")
 }
 
