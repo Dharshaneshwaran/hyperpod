@@ -403,10 +403,14 @@ func main() {
 		s.pool = func() []string {
 			seen := map[string]bool{}
 			var out []string
+			// A heartbeat only proves the worker agent is alive, not its
+			// rpc-server, so discovered endpoints are probed too.
 			for _, ep := range s.reg.healthyRPCEndpoints() {
-				if !seen[ep] {
+				if !seen[ep] && probeAlive(ep, 2*time.Second) {
 					seen[ep] = true
 					out = append(out, ep)
+				} else if !seen[ep] {
+					log.Printf("pool: skipping %s (worker heartbeat ok, but its rpc-server is unreachable)", ep)
 				}
 			}
 			for _, ep := range configured {
