@@ -1,0 +1,19 @@
+HyperPot — Llama 3.1 8B Q4 split across ROG + TUF, 28 Oct 2026
+=============================================================
+Model: Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf (4.9 GB), verified byte-exact vs HF.
+This is the genuine "too big for one laptop" case: 8B Q4 does NOT fit the ROG's
+3.7 GB VRAM alone, so pooling the TUF is what makes it runnable.
+
+Placement from llama.cpp load log (-lv 4), 33/33 layers offloaded:
+  CPU_Mapped               282 MiB  (ROG RAM)
+  CUDA0                   1073 MiB  (ROG RTX 3050)
+  RPC0[192.168.1.5:50052] 3330 MiB  (TUF RTX 4050)   <- ~71% on the remote laptop
+
+First load (cache empty): ~730 s. Upload to TUF ran ~4.8 MB/s this session
+(Wi-Fi better than yesterday's ~1.5 MB/s); ~3330 MiB transferred then cached.
+Split answer: "Teamwork is the collaborative effort of individuals working
+together towards a common goal..." at 6.68 tok/s.
+
+Note: because 8B does not fit the ROG alone, surviving a TUF death with the 8B
+is NOT guaranteed on two laptops (the ROG cannot hold all 4.9 GB on its GPU).
+Keep 3B for the live kill demo; use 8B for the "pool to run a bigger model" story.
