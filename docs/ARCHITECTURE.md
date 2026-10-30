@@ -82,9 +82,11 @@ Sources:
 |---|---|---|---|
 | Linux/NVIDIA | `nvidia-smi` | `/proc/meminfo` | `/sys/class/power_supply` |
 | Windows/NVIDIA | `nvidia-smi` | CIM | CIM/WMI |
-| macOS | unavailable | `sysctl` total | `pmset` |
+| macOS | `system_profiler` name only | `sysctl` total + `vm_stat` available | `pmset` |
 
-Metal free memory is not reported by HyperPod. Mixed CUDA/Metal placement uses
+HyperPod reports the Apple chip name and unified-memory totals, but not a
+Metal free-VRAM figure: Apple Silicon shares one memory pool, so no separate
+video-memory number exists to measure. Mixed CUDA/Metal placement uses
 llama.cpp's own device probing and is labelled as such.
 
 ## Verified recovery sequence

@@ -182,8 +182,9 @@ See [`PROTOCOL.md`](PROTOCOL.md) for schemas.
 - **Discovery is one local broadcast domain.** Routed networks require manual
   endpoints or a future discovery mechanism.
 - **macOS/Metal RPC was validated in one heterogeneous three-machine run.**
-  Metal free-memory telemetry remains unavailable, so mixed placement explicitly
-  uses llama.cpp's own device probing.
+  HyperPod reports the Apple chip name and unified-memory figures, but Apple
+  Silicon has no separate free-VRAM value to measure, so mixed CUDA/Metal
+  placement explicitly uses llama.cpp's own device probing.
 
 ## Why Meta open weights matter
 

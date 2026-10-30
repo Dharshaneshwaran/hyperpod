@@ -66,10 +66,19 @@ pub fn collect() -> Telemetry {
     Telemetry {
         schema_version: TELEMETRY_SCHEMA_VERSION,
         collected_at_unix_ms,
-        gpu: collect_nvidia_gpu(),
+        gpu: collect_gpu(),
         memory: collect_memory(),
         power: collect_power(),
     }
+}
+
+/// Collect GPU facts from whichever backend this host supports. NVIDIA hosts
+/// report full metrics; Apple Silicon reports only the values macOS exposes.
+fn collect_gpu() -> Option<GpuTelemetry> {
+    if let Some(nvidia) = collect_nvidia_gpu() {
+        return Some(nvidia);
+    }
+    collect_apple_gpu()
 }
 
 fn command_output(program: &str, args: &[&str]) -> Option<String> {
@@ -198,13 +207,99 @@ fn collect_memory() -> Option<MemoryTelemetry> {
     let total_bytes = command_output("sysctl", &["-n", "hw.memsize"])?
         .parse::<u64>()
         .ok()?;
-    // macOS does not expose a directly equivalent MemAvailable value through
-    // this stable command, so leave it explicitly unavailable.
+    // macOS has no MemAvailable equivalent, so available memory is derived from
+    // vm_stat page counts. If vm_stat is missing or unparsable it stays null.
+    let available_mib =
+        command_output("vm_stat", &[]).and_then(|out| parse_vm_stat_available_mib(&out));
     Some(MemoryTelemetry {
-        source: "macos-sysctl".to_string(),
+        source: "macos-sysctl+vm_stat".to_string(),
         total_mib: Some(total_bytes / 1024 / 1024),
-        available_mib: None,
+        available_mib,
     })
+}
+
+/// Sum the vm_stat page classes macOS can hand back to a new allocation and
+/// convert them to MiB using the reported page size.
+///
+/// Available ≈ free + inactive + speculative + purgeable. This is an estimate
+/// of reclaimable memory, not a kernel-published "available" counter.
+#[cfg(any(target_os = "macos", test))]
+fn parse_vm_stat_available_mib(output: &str) -> Option<u64> {
+    let mut page_size: Option<u64> = None;
+    let mut pages: u64 = 0;
+    let mut matched = false;
+    for line in output.lines() {
+        if page_size.is_none() {
+            if let Some(rest) = line.split("page size of").nth(1) {
+                page_size = rest
+                    .split_whitespace()
+                    .next()
+                    .and_then(|v| v.parse::<u64>().ok());
+            }
+        }
+        let (label, value) = match line.split_once(':') {
+            Some(parts) => parts,
+            None => continue,
+        };
+        let label = label.trim();
+        let reclaimable = matches!(
+            label,
+            "Pages free" | "Pages inactive" | "Pages speculative" | "Pages purgeable"
+        );
+        if !reclaimable {
+            continue;
+        }
+        if let Ok(count) = value.trim().trim_end_matches('.').parse::<u64>() {
+            pages += count;
+            matched = true;
+        }
+    }
+    if !matched {
+        return None;
+    }
+    let page_size = page_size?;
+    Some(pages.saturating_mul(page_size) / 1024 / 1024)
+}
+
+/// Report the Apple GPU that macOS names. Apple Silicon shares one unified
+/// memory pool, so there is no separate VRAM figure; those fields stay null
+/// rather than reusing system RAM as if it were dedicated video memory.
+#[cfg(target_os = "macos")]
+fn collect_apple_gpu() -> Option<GpuTelemetry> {
+    use std::sync::OnceLock;
+    // The chipset name never changes, and system_profiler is slow, so resolve
+    // it once instead of on every five-second sample.
+    static NAME: OnceLock<Option<String>> = OnceLock::new();
+    let name = NAME
+        .get_or_init(|| {
+            command_output("system_profiler", &["SPDisplaysDataType"])
+                .and_then(|out| parse_chipset_model(&out))
+        })
+        .clone()?;
+    Some(GpuTelemetry {
+        source: "macos-system_profiler".to_string(),
+        name: Some(name),
+        vram_total_mib: None,
+        vram_free_mib: None,
+        utilization_percent: None,
+        temperature_celsius: None,
+        power_draw_watts: None,
+        power_limit_watts: None,
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn collect_apple_gpu() -> Option<GpuTelemetry> {
+    None
+}
+
+/// Extract the "Chipset Model" line from system_profiler SPDisplaysDataType.
+#[cfg(any(target_os = "macos", test))]
+fn parse_chipset_model(output: &str) -> Option<String> {
+    output
+        .lines()
+        .find_map(|line| line.split_once("Chipset Model:").map(|(_, v)| v))
+        .and_then(|value| optional_text(value))
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
@@ -388,5 +483,33 @@ mod tests {
         assert_eq!(optional_u64("[N/A]"), None);
         assert_eq!(optional_f64("N/A"), None);
         assert_eq!(optional_f64(""), None);
+    }
+
+    #[test]
+    fn parses_apple_chipset_model() {
+        let output = "Graphics/Displays:\n\n    Apple M4:\n\n      Chipset Model: Apple M4\n      Type: GPU\n      Bus: Built-In\n      Total Number of Cores: 10\n      Metal Support: Metal 3\n";
+        assert_eq!(parse_chipset_model(output).as_deref(), Some("Apple M4"));
+        assert!(parse_chipset_model("Graphics/Displays:\n").is_none());
+    }
+
+    #[test]
+    fn sums_reclaimable_vm_stat_pages() {
+        let output = concat!(
+            "Mach Virtual Memory Statistics: (page size of 16384 bytes)\n",
+            "Pages free:                               32768.\n",
+            "Pages active:                            100000.\n",
+            "Pages inactive:                           16384.\n",
+            "Pages speculative:                         8192.\n",
+            "Pages wired down:                         50000.\n",
+            "Pages purgeable:                           8192.\n",
+        );
+        // (32768 + 16384 + 8192 + 8192) pages * 16 KiB = 1024 MiB
+        assert_eq!(parse_vm_stat_available_mib(output), Some(1024));
+    }
+
+    #[test]
+    fn vm_stat_without_usable_counters_is_unavailable() {
+        assert!(parse_vm_stat_available_mib("").is_none());
+        assert!(parse_vm_stat_available_mib("Pages active: 100000.\n").is_none());
     }
 }

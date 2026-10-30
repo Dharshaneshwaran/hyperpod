@@ -157,7 +157,8 @@ observability and recovery.
 - NVIDIA telemetry through `nvidia-smi`
 - Linux memory and power telemetry through `/proc` and `power_supply`
 - Windows memory and power telemetry through CIM/WMI
-- macOS memory and power telemetry through `sysctl` and `pmset`
+- macOS GPU name through `system_profiler`, unified-memory totals through
+  `sysctl`, available memory through `vm_stat`, and power through `pmset`
 - Explicit unavailable values for unsupported measurements
 
 ### React dashboard
@@ -287,8 +288,9 @@ Full method and per-run values: [`../BENCHMARKS.md`](../BENCHMARKS.md).
 - Wi-Fi model splitting is slower than one local GPU when the model already fits.
 - The measured scheduler currently uses usable VRAM, not compute throughput or
   network bandwidth.
-- Metal free-memory telemetry is unavailable; mixed CUDA/Metal placement uses an
-  explicit llama.cpp fallback.
+- Apple Silicon shares one unified memory pool, so there is no separate Metal
+  free-VRAM value to measure; mixed CUDA/Metal placement uses an explicit
+  llama.cpp fallback.
 - Adding a worker does not reconfigure an already loaded pipeline automatically.
 - The controller is a single point of failure.
 
