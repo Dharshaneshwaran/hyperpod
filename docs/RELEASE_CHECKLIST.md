@@ -100,7 +100,7 @@ Expected current state:
 - [ ] Mixed scheduler fallback screenshot.
 - [ ] Three-machine actual placement screenshot.
 - [ ] Recovered ROG+TUF placement screenshot.
-- [ ] Native-vs-HyperPod benchmark graphic.
+- [x] Native-vs-HyperPod benchmark graphic.
 - [x] Architecture SVG.
 - [ ] Main 100–120 second demo take.
 - [ ] Backup demo take.

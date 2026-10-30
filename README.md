@@ -29,6 +29,8 @@ Raw evidence is committed under [`test/*.log`](test/). The latest measured
 telemetry and scheduler run is
 [`test/phase5-telemetry-scheduler.log`](test/phase5-telemetry-scheduler.log).
 
+![HyperPod measured benchmark and failure results](docs/assets/hyperpod-benchmarks.svg)
+
 ## What HyperPod does
 
 - Discovers worker agents through UDP broadcast on a local subnet.

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title desc">
+  <title id="title">HyperPod measured benchmark results</title>
+  <desc id="desc">Five-run median latency and throughput plus native and HyperPod physical TUF failure outcomes.</desc>
+  <defs><style>
+    .bg{fill:#f5f7fa}.card{fill:#fff;stroke:#d9e0e7;stroke-width:2}.t{font-family:Inter,Arial,sans-serif;fill:#16212b}.h{font-size:34px;font-weight:700}.sub{font-size:17px;fill:#52606d}.label{font-size:18px;font-weight:700}.small{font-size:14px;fill:#52606d}.num{font-size:26px;font-weight:700}.blue{fill:#175cd3}.green{fill:#159455}.red{fill:#d64545}.gray{fill:#9aa6b2}.barbg{fill:#e8edf2}.white{fill:#fff}
+  </style></defs>
+  <rect class="bg" width="1400" height="760"/>
+  <text class="t h" x="70" y="65">HyperPod: measured results, not speed claims</text>
+  <text class="t sub" x="70" y="100">Llama 3.2 3B Q4 · ROG RTX 3050 + TUF RTX 4050 · 5 GHz Wi-Fi · five warm-model runs</text>
+
+  <rect class="card" x="70" y="145" width="1260" height="300" rx="16"/>
+  <text class="t label" x="105" y="190">Median end-to-end latency (lower is better)</text>
+  <text class="t small" x="105" y="225">ROG-only</text><rect class="barbg" x="280" y="205" width="900" height="28" rx="7"/><rect class="blue" x="280" y="205" width="116" height="28" rx="7"/><text class="t small" x="1200" y="225">1.543 s</text>
+  <text class="t small" x="105" y="285">Native split</text><rect class="barbg" x="280" y="265" width="900" height="28" rx="7"/><rect class="gray" x="280" y="265" width="896" height="28" rx="7"/><text class="t small" x="1200" y="285">11.947 s</text>
+  <text class="t small" x="105" y="345">HyperPod split</text><rect class="barbg" x="280" y="325" width="900" height="28" rx="7"/><rect class="green" x="280" y="325" width="885" height="28" rx="7"/><text class="t small" x="1200" y="345">11.804 s</text>
+  <text class="t small" x="105" y="405">Control-plane difference: 0.143 s at the median; treated as within observed variance.</text>
+
+  <rect class="card" x="70" y="475" width="600" height="220" rx="16"/>
+  <text class="t label" x="105" y="520">Native llama.cpp after physical TUF loss</text>
+  <text class="t num red" x="105" y="568">Request failed</text>
+  <text class="t small" x="105" y="605">curl 52 · HTTP 000 · process aborted</text>
+  <text class="t small" x="105" y="635">No health endpoint · no automatic restart</text>
+  <text class="t small" x="105" y="665">Failure returned after 34.06 s</text>
+
+  <rect class="card" x="730" y="475" width="600" height="220" rx="16"/>
+  <text class="t label" x="765" y="520">HyperPod after physical TUF loss</text>
+  <text class="t num green" x="765" y="568">Same request returned</text>
+  <text class="t small" x="765" y="605">Underlying llama.cpp still aborted</text>
+  <text class="t small" x="765" y="635">Dead RPC excluded · local model ready in ~3 s</text>
+  <text class="t small" x="765" y="665">1,828-character response · 11.31 s total</text>
+
+  <text class="t small" x="70" y="730">Different failure prompts were used; elapsed failure times are not a throughput comparison. Full method: BENCHMARKS.md</text>
+</svg>
