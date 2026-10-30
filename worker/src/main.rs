@@ -175,7 +175,10 @@ fn start_heartbeat(cfg: Config, shared: SharedTelemetry) {
         };
         match ureq::post(&format!("{}/heartbeat", cfg.controller)).send_json(&req) {
             Ok(_) => {}
-            Err(e) => eprintln!("[worker] heartbeat failed: {e}"),
+            Err(e) => {
+                eprintln!("[worker] heartbeat failed ({e}); re-registering");
+                register(&cfg, &shared);
+            }
         }
         thread::sleep(Duration::from_secs(3));
     });
