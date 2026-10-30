@@ -15,8 +15,7 @@ set -e
 BASE="${HYPERPOD_BASE:-/mnt/newvolume/meta/hyperpod}"
 CONTROLLER_IP="${CONTROLLER_IP:-127.0.0.1}"
 RPC_PORT="${RPC_PORT:-50052}"
-WORKER_ID="${WORKER_ID:-worker-ROG}"
-GPU_NAME="${GPU_NAME:-RTX 3050}"
+WORKER_ID="${WORKER_ID:-worker-$(hostname)}"
 MODEL="${MODEL:-$BASE/test/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf}"
 # ---------------------------------------------------------
 
@@ -50,7 +49,6 @@ setsid nohup env \
   HYPERPOD_RPC_ADVERTISE="$MY_IP:$RPC_PORT" \
   HYPERPOD_LLAMA_CLI="$BIN/llama-cli" \
   HYPERPOD_MODEL="$MODEL" \
-  HYPERPOD_GPU="$GPU_NAME" \
   "$WORKER" >/tmp/hp-worker.log 2>&1 </dev/null &
 disown "$!" 2>/dev/null || true
 echo "started hyperpod-worker (log: /tmp/hp-worker.log)"

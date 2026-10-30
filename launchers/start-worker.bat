@@ -12,11 +12,10 @@ REM ==========================================================================
 REM ---------------- CONFIG (edit these once) ----------------
 set "CONTROLLER_IP=192.168.1.20"
 set "RPC_PORT=50052"
-set "WORKER_ID=worker-TUF"
-set "GPU_NAME=RTX 4050"
+set "WORKER_ID=worker-%COMPUTERNAME%"
 set "LLAMA_DIR=C:\llama-cuda"
 set "MODEL=C:\llama\models\Llama-3.2-1B-Instruct-Q4_K_M.gguf"
-set "WORKER_EXE=D:\meta\hyperpod\worker\target\release\hyperpod-worker.exe"
+set "WORKER_EXE=%~dp0..\worker\target\release\hyperpod-worker.exe"
 REM ----------------------------------------------------------
 
 echo(
@@ -48,7 +47,6 @@ set "HYPERPOD_WORKER_ADVERTISE=http://%MY_IP%:9100"
 set "HYPERPOD_RPC_ADVERTISE=%MY_IP%:%RPC_PORT%"
 set "HYPERPOD_LLAMA_CLI=%LLAMA_DIR%\llama-cli.exe"
 set "HYPERPOD_MODEL=%MODEL%"
-set "HYPERPOD_GPU=%GPU_NAME%"
 start "HyperPod worker" cmd /k "%WORKER_EXE%"
 
 echo(
