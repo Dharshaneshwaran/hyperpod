@@ -15,6 +15,7 @@
 //   HYPERPOT_WORKER_ADVERTISE default "http://127.0.0.1:9100" (told to controller)
 //   HYPERPOT_CONTROLLER       default "http://127.0.0.1:8080"
 //   HYPERPOT_LLAMA_CLI        path to llama-cli binary (required)
+mod telemetry;
 //   HYPERPOT_MODEL            path to .gguf model (required)
 //   HYPERPOT_NGL              gpu layers, default "99"
 
@@ -31,11 +32,13 @@ struct RegisterReq {
     rpc_addr: String,
     gpu: String,
     os: String,
+    telemetry: telemetry::Telemetry,
 }
 
 #[derive(Serialize)]
 struct HeartbeatReq {
     worker_id: String,
+    telemetry: telemetry::Telemetry,
 }
 
 // Broadcast payload for LAN auto-discovery (matches the controller's listener).
@@ -48,6 +51,7 @@ struct DiscoveryAnnounce {
     rpc_addr: String, // host:port of this worker's ggml-rpc-server
     gpu: String,
     os: String,
+    telemetry: telemetry::Telemetry,
 }
 
 #[derive(Deserialize)]
@@ -101,20 +105,54 @@ fn load_config() -> Result<Config, String> {
     })
 }
 
+type SharedTelemetry = Arc<std::sync::RwLock<telemetry::Telemetry>>;
+
+/// Start one sampler shared by registration, heartbeats, and discovery. This
+/// avoids launching duplicate nvidia-smi/PowerShell collectors on Windows.
+fn start_telemetry_collector() -> SharedTelemetry {
+    let shared = Arc::new(std::sync::RwLock::new(telemetry::collect()));
+    let background = Arc::clone(&shared);
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(5));
+        let latest = telemetry::collect();
+        if let Ok(mut current) = background.write() {
+            *current = latest;
+        }
+    });
+    shared
+}
+
+fn telemetry_snapshot(shared: &SharedTelemetry) -> telemetry::Telemetry {
+    shared
+        .read()
+        .map(|value| value.clone())
+        .unwrap_or_else(|_| telemetry::Telemetry::unavailable(0))
+}
+
+fn measured_gpu_name(snapshot: &telemetry::Telemetry) -> String {
+    snapshot
+        .gpu
+        .as_ref()
+        .and_then(|gpu| gpu.name.clone())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 fn detect_os() -> String {
     std::env::consts::OS.to_string()
 }
 
 /// Register with the controller (retries until it succeeds).
-fn register(cfg: &Config) {
-    let req = RegisterReq {
-        worker_id: cfg.worker_id.clone(),
-        address: cfg.advertise.clone(),
-        rpc_addr: env_or("HYPERPOT_RPC_ADVERTISE", ""),
-        gpu: env_or("HYPERPOT_GPU", "unknown"),
-        os: detect_os(),
-    };
+fn register(cfg: &Config, shared: &SharedTelemetry) {
     loop {
+        let telemetry = telemetry_snapshot(shared);
+        let req = RegisterReq {
+            worker_id: cfg.worker_id.clone(),
+            address: cfg.advertise.clone(),
+            rpc_addr: env_or("HYPERPOT_RPC_ADVERTISE", ""),
+            gpu: measured_gpu_name(&telemetry),
+            os: detect_os(),
+            telemetry,
+        };
         match ureq::post(&format!("{}/register", cfg.controller)).send_json(&req) {
             Ok(_) => {
                 println!("[worker] registered with controller at {}", cfg.controller);
@@ -129,24 +167,23 @@ fn register(cfg: &Config) {
 }
 
 /// Background heartbeat loop.
-fn start_heartbeat(cfg: Config) {
-    thread::spawn(move || {
+fn start_heartbeat(cfg: Config, shared: SharedTelemetry) {
+    thread::spawn(move || loop {
         let req = HeartbeatReq {
             worker_id: cfg.worker_id.clone(),
+            telemetry: telemetry_snapshot(&shared),
         };
-        loop {
-            match ureq::post(&format!("{}/heartbeat", cfg.controller)).send_json(&req) {
-                Ok(_) => {}
-                Err(e) => eprintln!("[worker] heartbeat failed: {e}"),
-            }
-            thread::sleep(Duration::from_secs(3));
+        match ureq::post(&format!("{}/heartbeat", cfg.controller)).send_json(&req) {
+            Ok(_) => {}
+            Err(e) => eprintln!("[worker] heartbeat failed: {e}"),
         }
+        thread::sleep(Duration::from_secs(3));
     });
 }
 
 /// LAN auto-discovery: periodically UDP-broadcast this worker's presence so the
 /// controller can auto-register it without any manual IP configuration.
-fn start_discovery_broadcast(cfg: Config) {
+fn start_discovery_broadcast(cfg: Config, shared: SharedTelemetry) {
     const DISCOVERY_PORT: u16 = 50999;
     thread::spawn(move || {
         let socket = match std::net::UdpSocket::bind("0.0.0.0:0") {
@@ -160,26 +197,26 @@ fn start_discovery_broadcast(cfg: Config) {
             eprintln!("[worker] discovery: set_broadcast failed: {e}");
             return;
         }
-        let announce = DiscoveryAnnounce {
-            kind: "hyperpot-worker".to_string(),
-            worker_id: cfg.worker_id.clone(),
-            address: cfg.advertise.clone(),
-            rpc_addr: env_or("HYPERPOT_RPC_ADVERTISE", ""),
-            gpu: env_or("HYPERPOT_GPU", "unknown"),
-            os: detect_os(),
-        };
-        let payload = match serde_json::to_vec(&announce) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("[worker] discovery: serialize failed: {e}");
-                return;
-            }
-        };
         let target = format!("255.255.255.255:{DISCOVERY_PORT}");
         println!("[worker] discovery: broadcasting presence to {target} every 3s");
         loop {
-            if let Err(e) = socket.send_to(&payload, &target) {
-                eprintln!("[worker] discovery: broadcast failed: {e}");
+            let telemetry = telemetry_snapshot(&shared);
+            let announce = DiscoveryAnnounce {
+                kind: "hyperpot-worker".to_string(),
+                worker_id: cfg.worker_id.clone(),
+                address: cfg.advertise.clone(),
+                rpc_addr: env_or("HYPERPOT_RPC_ADVERTISE", ""),
+                gpu: measured_gpu_name(&telemetry),
+                os: detect_os(),
+                telemetry,
+            };
+            match serde_json::to_vec(&announce) {
+                Ok(payload) => {
+                    if let Err(e) = socket.send_to(&payload, &target) {
+                        eprintln!("[worker] discovery: broadcast failed: {e}");
+                    }
+                }
+                Err(e) => eprintln!("[worker] discovery: serialize failed: {e}"),
             }
             thread::sleep(Duration::from_secs(3));
         }
@@ -291,10 +328,17 @@ fn main() {
     );
     println!("[worker] llama_cli={} model={}", cfg.llama_cli, cfg.model);
 
-    // Register, then start heartbeats.
-    register(&cfg);
-    start_heartbeat(cfg.clone());
-    start_discovery_broadcast(cfg.clone());
+    let telemetry = start_telemetry_collector();
+    let initial = telemetry_snapshot(&telemetry);
+    println!(
+        "[worker] telemetry={}",
+        serde_json::to_string(&initial).unwrap_or_else(|_| "null".to_string())
+    );
+
+    // Register, then start heartbeats and LAN discovery with the same measured snapshot.
+    register(&cfg, &telemetry);
+    start_heartbeat(cfg.clone(), Arc::clone(&telemetry));
+    start_discovery_broadcast(cfg.clone(), Arc::clone(&telemetry));
 
     // Serve /run.
     let server = tiny_http::Server::http(&cfg.bind)
@@ -325,8 +369,7 @@ fn main() {
                 text: String::new(),
                 error: "not found".to_string(),
             };
-            let r = json_response(&resp)
-                .with_status_code(404);
+            let r = json_response(&resp).with_status_code(404);
             let _ = request.respond(r);
         }
     }
@@ -334,7 +377,7 @@ fn main() {
 
 fn json_response(resp: &RunResp) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
     let body = serde_json::to_vec(resp).unwrap_or_default();
-    let header = tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
-        .unwrap();
+    let header =
+        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap();
     tiny_http::Response::from_data(body).with_header(header)
 }

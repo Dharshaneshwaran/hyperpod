@@ -43,6 +43,19 @@ function StatusPill({ healthy }: { healthy: boolean }) {
   );
 }
 
+function measured(value: number | null | undefined, suffix = "", digits = 0) {
+  return value == null ? "Unavailable" : `${value.toFixed(digits)}${suffix}`;
+}
+
+function memoryPair(available: number | null | undefined, total: number | null | undefined) {
+  if (available == null && total == null) return "Unavailable";
+  return `${available == null ? "?" : available.toFixed(0)} / ${total == null ? "?" : total.toFixed(0)} MiB`;
+}
+
+function powerState(online: boolean | null | undefined) {
+  return online == null ? "Unavailable" : online ? "AC online" : "On battery";
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>(() => {
     const h = window.location.hash.slice(1);
@@ -368,9 +381,17 @@ export default function App() {
                       });
                     })()}
                     <div className="place-foot muted">
-                      {pipeline.split
-                        ? "Split: part of the model runs on a remote laptop."
-                        : "Not split: the whole model is on this laptop."}
+                      <div>
+                        {pipeline.split
+                          ? "Split: part of the model runs on a remote laptop."
+                          : "Not split: the whole model is on this laptop."}
+                      </div>
+                      <div className="mono">
+                        Scheduler: {pipeline.scheduler_strategy || "Unavailable"}
+                        {pipeline.tensor_split
+                          ? ` · weights ${pipeline.tensor_split} MiB · ${pipeline.vram_reserve_mib} MiB reserve/device`
+                          : " · custom weights unavailable; llama.cpp probes devices"}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -418,7 +439,8 @@ export default function App() {
                         </button>
                       </th>
                       <th>GPU</th>
-                      <th>RPC endpoint</th>
+                      <th>Free / total VRAM</th>
+                      <th>Load / temperature</th>
                       <th>Last seen</th>
                       <th>Status</th>
                       <th className="th-r">Actions</th>
@@ -447,8 +469,19 @@ export default function App() {
                           </div>
                           <div className="node-sub">{w.os}</div>
                         </td>
+                        <td className="num">
+                          {memoryPair(
+                            w.telemetry?.gpu?.vram_free_mib,
+                            w.telemetry?.gpu?.vram_total_mib,
+                          )}
+                        </td>
                         <td>
-                          <span className="mono">{w.rpc_addr || "—"}</span>
+                          <div className="cell-main num">
+                            {measured(w.telemetry?.gpu?.utilization_percent, "%")}
+                          </div>
+                          <div className="node-sub num">
+                            {measured(w.telemetry?.gpu?.temperature_celsius, "°C")}
+                          </div>
                         </td>
                         <td className="num">{w.last_seen_secs.toFixed(1)}s ago</td>
                         <td>
@@ -471,7 +504,7 @@ export default function App() {
                     ))}
                     {rows.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="empty-row">
+                        <td colSpan={7} className="empty-row">
                           {workers.length === 0 ? "No nodes have joined yet." : "No nodes match this filter."}
                         </td>
                       </tr>
@@ -559,14 +592,52 @@ export default function App() {
             </button>
           </div>
           <dl className="kv">
-            <dt>GPU</dt>
-            <dd>{selected.gpu}</dd>
+            <dt>GPU (measured)</dt>
+            <dd>{selected.telemetry?.gpu?.name ?? "Unavailable"}</dd>
+            <dt>Free / total VRAM</dt>
+            <dd className="num">
+              {memoryPair(
+                selected.telemetry?.gpu?.vram_free_mib,
+                selected.telemetry?.gpu?.vram_total_mib,
+              )}
+            </dd>
+            <dt>GPU utilization</dt>
+            <dd className="num">{measured(selected.telemetry?.gpu?.utilization_percent, "%")}</dd>
+            <dt>GPU temperature</dt>
+            <dd className="num">{measured(selected.telemetry?.gpu?.temperature_celsius, "°C")}</dd>
+            <dt>GPU power draw / limit</dt>
+            <dd className="num">
+              {measured(selected.telemetry?.gpu?.power_draw_watts, " W", 1)} / {measured(selected.telemetry?.gpu?.power_limit_watts, " W", 1)}
+            </dd>
+            <dt>Available / total system RAM</dt>
+            <dd className="num">
+              {memoryPair(
+                selected.telemetry?.memory?.available_mib,
+                selected.telemetry?.memory?.total_mib,
+              )}
+            </dd>
+            <dt>Battery / AC</dt>
+            <dd className="num">
+              {measured(selected.telemetry?.power?.battery_percent, "%")} · {powerState(selected.telemetry?.power?.ac_online)}
+            </dd>
+            <dt>Telemetry source</dt>
+            <dd className="mono">
+              {selected.telemetry
+                ? [
+                    selected.telemetry.gpu?.source,
+                    selected.telemetry.memory?.source,
+                    selected.telemetry.power?.source,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "Unavailable"
+                : "Unavailable"}
+            </dd>
             <dt>Operating system</dt>
             <dd>{selected.os}</dd>
             <dt>Worker address</dt>
             <dd className="mono">{selected.address}</dd>
             <dt>RPC endpoint</dt>
-            <dd className="mono">{selected.rpc_addr || "—"}</dd>
+            <dd className="mono">{selected.rpc_addr || "Unavailable"}</dd>
             <dt>Last heartbeat</dt>
             <dd className="num">{selected.last_seen_secs.toFixed(1)}s ago</dd>
           </dl>

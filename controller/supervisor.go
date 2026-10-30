@@ -6,21 +6,22 @@
 // llama-server, and re-runs the in-flight request.
 //
 // Config (env):
-//   HYPERPOT_LLAMA_SERVER   path to llama-server binary (required for supervisor)
-//   HYPERPOT_MODEL          path to .gguf model (required for supervisor)
-//   HYPERPOT_SERVER_HOST    host llama-server binds to (default 127.0.0.1)
-//   HYPERPOT_SERVER_PORT    port llama-server binds to (default 9931)
-//   HYPERPOT_NGL            gpu layers (default 99)
-//   HYPERPOT_RPC_WORKERS    comma list host:port of ggml-rpc-server endpoints.
-//                           If set, these are used directly as the split targets.
+//
+//	HYPERPOT_LLAMA_SERVER   path to llama-server binary (required for supervisor)
+//	HYPERPOT_MODEL          path to .gguf model (required for supervisor)
+//	HYPERPOT_SERVER_HOST    host llama-server binds to (default 127.0.0.1)
+//	HYPERPOT_SERVER_PORT    port llama-server binds to (default 9931)
+//	HYPERPOT_NGL            gpu layers (default 99)
+//	HYPERPOT_RPC_WORKERS    comma list host:port of ggml-rpc-server endpoints.
+//	                        If set, these are used directly as the split targets.
 package main
 
 import (
 	"bufio"
-	"errors"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -53,8 +54,15 @@ type supervisor struct {
 	smallCmd   *exec.Cmd
 	smallUp    bool
 
-	// rpcWorkers is the list of ggml-rpc-server endpoints (host:port) to split across.
+	// rpcWorkers is the ordered list of ggml-rpc-server endpoints in the current split.
 	rpcWorkers []string
+	planner    func([]string) splitPlan
+
+	// Scheduler decision used for the current generation.
+	schedulerStrategy string
+	tensorSplit       string
+	splitWeightsMiB   []uint64
+	vramReserveMiB    uint64
 
 	cmd     *exec.Cmd
 	running bool
@@ -85,12 +93,16 @@ type devicePlacement struct {
 
 // pipelineInfo is the observable state of the big-tier pipeline.
 type pipelineInfo struct {
-	Generation int               `json:"generation"`
-	State      string            `json:"state"` // down | loading | ready
-	RPCWorkers []string          `json:"rpc_workers"`
-	Devices    []devicePlacement `json:"devices"`
-	Offloaded  string            `json:"offloaded"`
-	Split      bool              `json:"split"` // true only if a remote RPC device holds weights
+	Generation        int               `json:"generation"`
+	State             string            `json:"state"` // down | loading | ready
+	RPCWorkers        []string          `json:"rpc_workers"`
+	Devices           []devicePlacement `json:"devices"`
+	Offloaded         string            `json:"offloaded"`
+	Split             bool              `json:"split"` // true only if a remote RPC device holds weights
+	SchedulerStrategy string            `json:"scheduler_strategy"`
+	TensorSplit       string            `json:"tensor_split"`
+	SplitWeightsMiB   []uint64          `json:"split_weights_mib"`
+	VRAMReserveMiB    uint64            `json:"vram_reserve_mib"`
 	// LoadingSecs is how long the current generation has been loading (0 once ready).
 	LoadingSecs float64 `json:"loading_secs"`
 	// ReadySecs is how long the current generation took to become ready.
@@ -242,41 +254,16 @@ func (s *supervisor) waitReadyURL(base string, timeout time.Duration) error {
 	return fmt.Errorf("server at %s not ready within %s", base, timeout)
 }
 
-// evenSplit returns a comma tensor-split string giving each worker an equal share.
-func evenSplit(n int) string {
-	if n <= 0 {
-		return ""
-	}
-	parts := make([]string, n)
-	for i := range parts {
-		parts[i] = "1"
-	}
-	return strings.Join(parts, ",")
-}
-
-// remoteHeavySplit builds a --tensor-split where each of the nWorkers REMOTE
-// nodes gets a large share (4) and the LOCAL device a small share (1), so the
-// remote nodes genuinely hold most of the model and losing one really breaks
-// generation.
-//
-// Order matters and is NOT the --list-devices order. Measured on llama.cpp
-// b11909 with one RPC node (3B model):
-//   -ts 1,4 -> CUDA0 1573 MiB, RPC0 345 MiB
-//   -ts 4,1 -> CUDA0  552 MiB, RPC0 1366 MiB
-// so the split order is: RPC devices first, local device last.
-func remoteHeavySplit(nWorkers int) string {
-	parts := make([]string, 0, nWorkers+1)
-	for i := 0; i < nWorkers; i++ {
-		parts = append(parts, "4") // each remote: large share
-	}
-	parts = append(parts, "1") // local device: small share
-	return strings.Join(parts, ",")
-}
-
 // launch (re)starts llama-server with the current set of rpc workers.
 // Caller must hold s.mu.
 func (s *supervisor) launchLocked(workers []string) error {
 	s.stopLocked()
+
+	plan := splitPlan{Workers: append([]string(nil), workers...), Strategy: "llama.cpp-auto"}
+	if s.planner != nil {
+		plan = s.planner(workers)
+	}
+	workers = plan.Workers
 
 	args := []string{
 		"-m", s.model,
@@ -290,10 +277,9 @@ func (s *supervisor) launchLocked(workers []string) error {
 	}
 	if len(workers) > 0 {
 		args = append(args, "--rpc", strings.Join(workers, ","))
-		// Weight the split heavily toward the REMOTE workers so that losing a
-		// remote node genuinely breaks generation (local keeps a small share).
-		// Order of --tensor-split matches: local device first, then each --rpc worker.
-		args = append(args, "--tensor-split", remoteHeavySplit(len(workers)))
+		if plan.TensorSplit != "" {
+			args = append(args, "--tensor-split", plan.TensorSplit)
+		}
 	}
 
 	cmd := exec.Command(s.llamaServer, args...)
@@ -310,13 +296,17 @@ func (s *supervisor) launchLocked(workers []string) error {
 	s.ready = false
 	s.placement = nil
 	s.offloaded = ""
+	s.schedulerStrategy = plan.Strategy
+	s.tensorSplit = plan.TensorSplit
+	s.splitWeightsMiB = append([]uint64(nil), plan.WeightsMiB...)
+	s.vramReserveMiB = plan.ReserveMiB
 	s.startedAt = time.Now()
 	s.readyAfter = 0
 	readerDone := make(chan struct{})
 	s.rpcWorkers = workers
 	s.generation++
 	gen := s.generation
-	log.Printf("supervisor: launched llama-server (gen %d) split over %v", gen, workers)
+	log.Printf("supervisor: launched llama-server (gen %d) over %v; scheduler=%s", gen, workers, plan.String())
 
 	// Stream llama-server's log: keep only the useful lines, and capture the
 	// device placement it reports while loading.
@@ -482,14 +472,18 @@ func (s *supervisor) info() pipelineInfo {
 		}
 	}
 	return pipelineInfo{
-		Generation: s.generation,
-		State:      state,
-		RPCWorkers: append([]string(nil), s.rpcWorkers...),
-		Devices:    devs,
-		Offloaded:  s.offloaded,
-		Split:      split,
-		LoadingSecs: loading,
-		ReadySecs:   s.readyAfter.Seconds(),
+		Generation:        s.generation,
+		State:             state,
+		RPCWorkers:        append([]string(nil), s.rpcWorkers...),
+		Devices:           devs,
+		Offloaded:         s.offloaded,
+		Split:             split,
+		SchedulerStrategy: s.schedulerStrategy,
+		TensorSplit:       s.tensorSplit,
+		SplitWeightsMiB:   append([]uint64(nil), s.splitWeightsMiB...),
+		VRAMReserveMiB:    s.vramReserveMiB,
+		LoadingSecs:       loading,
+		ReadySecs:         s.readyAfter.Seconds(),
 	}
 }
 

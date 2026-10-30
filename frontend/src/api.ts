@@ -2,6 +2,31 @@
 export const CONTROLLER: string =
   (import.meta.env.VITE_CONTROLLER as string) || "http://127.0.0.1:8080";
 
+export type Telemetry = {
+  schema_version: number;
+  collected_at_unix_ms: number;
+  gpu: {
+    source: string;
+    name: string | null;
+    vram_total_mib: number | null;
+    vram_free_mib: number | null;
+    utilization_percent: number | null;
+    temperature_celsius: number | null;
+    power_draw_watts: number | null;
+    power_limit_watts: number | null;
+  } | null;
+  memory: {
+    source: string;
+    total_mib: number | null;
+    available_mib: number | null;
+  } | null;
+  power: {
+    source: string;
+    battery_percent: number | null;
+    ac_online: boolean | null;
+  } | null;
+};
+
 export type Worker = {
   worker_id: string;
   address: string;
@@ -11,6 +36,7 @@ export type Worker = {
   healthy: boolean;
   last_seen_secs: number;
   local: boolean; // runs on the controller's own laptop
+  telemetry: Telemetry | null;
 };
 
 export type InferResp = {
@@ -31,6 +57,10 @@ export type Pipeline = {
   devices: DevicePlacement[] | null;
   offloaded: string;
   split: boolean;
+  scheduler_strategy: string;
+  tensor_split: string;
+  split_weights_mib: number[] | null;
+  vram_reserve_mib: number;
 };
 
 export async function fetchPipeline(): Promise<Pipeline | null> {

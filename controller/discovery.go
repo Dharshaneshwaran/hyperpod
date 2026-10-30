@@ -18,12 +18,13 @@ const DiscoveryPort = 50999
 
 // discoveryAnnounce is the payload a worker broadcasts.
 type discoveryAnnounce struct {
-	Type     string `json:"type"`     // "hyperpot-worker"
-	WorkerID string `json:"worker_id"`
-	Address  string `json:"address"`  // http base, e.g. http://192.168.1.38:9100
-	RPCAddr  string `json:"rpc_addr"` // host:port of this worker's ggml-rpc-server
-	GPU      string `json:"gpu"`
-	OS       string `json:"os"`
+	Type      string     `json:"type"` // "hyperpot-worker"
+	WorkerID  string     `json:"worker_id"`
+	Address   string     `json:"address"`  // http base, e.g. http://192.168.1.38:9100
+	RPCAddr   string     `json:"rpc_addr"` // host:port of this worker's ggml-rpc-server
+	GPU       string     `json:"gpu"`
+	OS        string     `json:"os"`
+	Telemetry *Telemetry `json:"telemetry"`
 }
 
 // startDiscovery listens for worker broadcasts and registers them.
@@ -48,7 +49,7 @@ func (s *server) startDiscovery() {
 		if err := json.Unmarshal(buf[:n], &a); err != nil {
 			continue // ignore non-HyperPot traffic
 		}
-		if a.Type != "hyperpot-worker" || a.WorkerID == "" {
+		if a.Type != "hyperpot-worker" || a.WorkerID == "" || !a.Telemetry.validVersion() {
 			continue
 		}
 		// If the worker did not know its own IP, fall back to the UDP source IP.
@@ -56,13 +57,18 @@ func (s *server) startDiscovery() {
 			a.Address = "http://" + src.IP.String() + ":9100"
 		}
 
+		gpu := a.GPU
+		if a.Telemetry != nil && a.Telemetry.GPU != nil && a.Telemetry.GPU.Name != nil {
+			gpu = *a.Telemetry.GPU.Name
+		}
 		known := s.reg.isKnown(a.WorkerID)
 		s.reg.register(&worker{
-			ID:      a.WorkerID,
-			Address: a.Address,
-			RPCAddr: a.RPCAddr,
-			GPU:     a.GPU,
-			OS:      a.OS,
+			ID:        a.WorkerID,
+			Address:   a.Address,
+			RPCAddr:   a.RPCAddr,
+			GPU:       gpu,
+			OS:        a.OS,
+			Telemetry: a.Telemetry,
 		})
 		if !known {
 			log.Printf("discovery: auto-registered worker %q from %s (rpc=%s)", a.WorkerID, src.IP, a.RPCAddr)

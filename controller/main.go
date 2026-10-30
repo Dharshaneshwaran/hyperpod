@@ -30,12 +30,13 @@ const heartbeatTimeout = 10 * time.Second
 
 // worker is one registered worker agent.
 type worker struct {
-	ID            string    `json:"worker_id"`
-	Address       string    `json:"address"`
-	RPCAddr       string    `json:"rpc_addr"` // host:port of this worker's ggml-rpc-server
-	GPU           string    `json:"gpu"`
-	OS            string    `json:"os"`
-	LastHeartbeat time.Time `json:"-"`
+	ID            string     `json:"worker_id"`
+	Address       string     `json:"address"`
+	RPCAddr       string     `json:"rpc_addr"` // host:port of this worker's ggml-rpc-server
+	GPU           string     `json:"gpu"`      // legacy summary; telemetry.gpu is authoritative
+	OS            string     `json:"os"`
+	Telemetry     *Telemetry `json:"telemetry"`
+	LastHeartbeat time.Time  `json:"-"`
 }
 
 func (w *worker) healthy() bool {
@@ -70,7 +71,7 @@ func (r *registry) isKnown(id string) bool {
 	return ok
 }
 
-func (r *registry) heartbeat(id string) bool {
+func (r *registry) heartbeat(id string, telemetry *Telemetry) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	w, ok := r.workers[id]
@@ -78,6 +79,12 @@ func (r *registry) heartbeat(id string) bool {
 		return false
 	}
 	w.LastHeartbeat = time.Now()
+	if telemetry != nil {
+		w.Telemetry = telemetry
+		if telemetry.GPU != nil && telemetry.GPU.Name != nil {
+			w.GPU = *telemetry.GPU.Name
+		}
+	}
 	return true
 }
 
@@ -120,15 +127,17 @@ func (r *registry) healthyRPCEndpoints() []string {
 // ---- wire types -------------------------------------------------------
 
 type registerReq struct {
-	WorkerID string `json:"worker_id"`
-	Address  string `json:"address"`
-	RPCAddr  string `json:"rpc_addr"`
-	GPU      string `json:"gpu"`
-	OS       string `json:"os"`
+	WorkerID  string     `json:"worker_id"`
+	Address   string     `json:"address"`
+	RPCAddr   string     `json:"rpc_addr"`
+	GPU       string     `json:"gpu"`
+	OS        string     `json:"os"`
+	Telemetry *Telemetry `json:"telemetry"`
 }
 
 type heartbeatReq struct {
-	WorkerID string `json:"worker_id"`
+	WorkerID  string     `json:"worker_id"`
+	Telemetry *Telemetry `json:"telemetry"`
 }
 
 type inferReq struct {
@@ -183,7 +192,15 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad register payload"})
 		return
 	}
-	s.reg.register(&worker{ID: req.WorkerID, Address: req.Address, RPCAddr: req.RPCAddr, GPU: req.GPU, OS: req.OS})
+	if !req.Telemetry.validVersion() {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "unsupported telemetry schema version"})
+		return
+	}
+	gpu := req.GPU
+	if req.Telemetry != nil && req.Telemetry.GPU != nil && req.Telemetry.GPU.Name != nil {
+		gpu = *req.Telemetry.GPU.Name
+	}
+	s.reg.register(&worker{ID: req.WorkerID, Address: req.Address, RPCAddr: req.RPCAddr, GPU: gpu, OS: req.OS, Telemetry: req.Telemetry})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -193,7 +210,11 @@ func (s *server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "bad heartbeat payload"})
 		return
 	}
-	if !s.reg.heartbeat(req.WorkerID) {
+	if !req.Telemetry.validVersion() {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "unsupported telemetry schema version"})
+		return
+	}
+	if !s.reg.heartbeat(req.WorkerID, req.Telemetry) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "unknown worker"})
 		return
 	}
@@ -398,6 +419,7 @@ func main() {
 	// Supervisor (Path A) mode: active only if llama-server + model are configured.
 	if sup, ok := newSupervisor(); ok {
 		s.sup = sup
+		sup.planner = s.planSplit
 		log.Printf("supervisor mode ENABLED (llama-server=%s model=%s)", sup.llamaServer, sup.model)
 
 		// The pool used for every (re)build: auto-discovered workers plus any
