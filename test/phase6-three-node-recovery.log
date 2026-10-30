@@ -1,0 +1,55 @@
+HyperPod — heterogeneous 3-node → 2-node same-request recovery (30 Oct 2026)
+============================================================================
+Nodes:
+  Controller/local: ROG Linux, RTX 3050 CUDA
+  Remote 1: Windows TUF (worker-KAMALESH), RTX 4050 CUDA, 192.168.1.5
+  Remote 2: M4 Mac (worker-Krishs-MacBook-Air), Metal RPC, 192.168.1.13
+Network: trusted local Wi-Fi.
+Model: Llama 3.2 3B Q4_K_M.
+
+Initial three-machine placement from llama.cpp:
+  CPU_Mapped                              308 MiB
+  CUDA0 (ROG)                             552 MiB
+  RPC0[192.168.1.13:50052] (M4 Mac)       968 MiB
+  RPC0[192.168.1.5:50052] (TUF)           398 MiB
+  29/29 layers; split=true; ready after 82 s.
+
+Scheduler strategy: llama.cpp-auto (remote free VRAM unavailable).
+Reason: macOS telemetry measured 16,384 MiB total unified memory, battery and AC,
+but did not expose a trustworthy Metal free-memory value. HyperPod supplied no
+invented custom weight. llama.cpp probed the remote devices itself.
+
+Test request:
+  "Write a detailed 250-word explanation of why collaboration matters in
+   engineering teams." (n_predict=420)
+
+Physical failure:
+  Operator pressed Ctrl+C in the Mac ggml-rpc-server while the request was
+  in flight. The Mac Rust worker remained alive, intentionally proving that an
+  agent heartbeat alone does not prove its RPC accelerator is available.
+
+Recovery log:
+  23:15:02 llama-server gen 1 exited: signal: aborted (core dumped)
+  23:15:02 infer attempt 1 recognized node death and re-ran the same request
+  23:15:02 pool skipped Mac RPC (worker heartbeat OK, RPC unreachable)
+  23:15:02 launched gen 2 over TUF only, plus local ROG
+             measured scheduler weights=4763,3204; reserve=512 MiB/device
+  23:15:35 gen 2 ready after 33 seconds
+
+Recovered two-machine placement:
+  CPU_Mapped                             308 MiB
+  CUDA0 (ROG RTX 3050)                  896 MiB
+  RPC0[192.168.1.5:50052] (TUF)       1022 MiB
+  split=true
+
+The ORIGINAL HTTP request returned successfully:
+  ok=true; text length=1,937 characters; elapsed=75.68 seconds.
+  Answer begins: "Collaboration is a vital component of engineering teams, as
+  it fosters a culture of open communication, diverse perspectives, and
+  collective problem-solving..."
+
+Conclusion:
+  Verified heterogeneous ROG + Windows CUDA + macOS Metal placement; physical
+  Mac RPC loss; true 3-node → 2-node distributed rebuild; and automatic retry
+  of the same in-flight request. This is restart-and-retry recovery, not
+  token/KV-cache continuation.

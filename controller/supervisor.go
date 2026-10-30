@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -216,6 +217,7 @@ func (s *supervisor) launchSmall() error {
 		"-c", envDefault("HYPERPOD_CTX", "2048"),
 	}
 	cmd := exec.Command(s.llamaServer, args...)
+	cmd.Dir = filepath.Dir(s.llamaServer)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
@@ -283,6 +285,7 @@ func (s *supervisor) launchLocked(workers []string) error {
 	}
 
 	cmd := exec.Command(s.llamaServer, args...)
+	cmd.Dir = filepath.Dir(s.llamaServer)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("stdout pipe: %w", err)
