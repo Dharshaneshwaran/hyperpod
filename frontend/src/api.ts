@@ -1,4 +1,4 @@
-// API client for the HyperPot Go controller.
+// API client for the HyperPod Go controller.
 export const CONTROLLER: string =
   (import.meta.env.VITE_CONTROLLER as string) || "http://127.0.0.1:8080";
 

@@ -1,10 +1,10 @@
 [package]
-name = "hyperpot-worker"
+name = "hyperpod-worker"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "hyperpot-worker"
+name = "hyperpod-worker"
 path = "src/main.rs"
 
 [dependencies]

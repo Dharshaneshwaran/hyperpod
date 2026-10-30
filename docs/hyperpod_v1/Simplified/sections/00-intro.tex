@@ -2,7 +2,7 @@
 \section{How to Read This Guide}
 % ---------------------------------------------------------------------
 
-HyperPot turns a collection of ordinary laptops into one shared computer that
+HyperPod turns a collection of ordinary laptops into one shared computer that
 runs a large language model (LLM). This guide documents the \emph{idea}, the
 \emph{evidence} behind it, and the exact \emph{plan} to build it for the Meta
 Global AI Developer Hackathon (Indie track). It is written so a newcomer can
@@ -34,11 +34,11 @@ the work, listens for heartbeats, and --- the key part --- when a worker goes
 silent, it reassigns that worker's slice to a healthy machine and re-runs the
 request so the answer continues. The whole point is that the laptops are
 \emph{unreliable by nature} (they are people's real machines on Wi-Fi), and
-HyperPot makes the cluster behave reliably anyway.
+HyperPod makes the cluster behave reliably anyway.
 
 \subsection{The honest novelty statement}
 We do not claim to have invented load-aware failure recovery for LLMs. That
-already exists in datacenter research (\S\ref{sec:landscape}). HyperPot's
+already exists in datacenter research (\S\ref{sec:landscape}). HyperPod's
 contribution, stated safely, is: \emph{``Fault tolerance like this exists in
 datacenters. It has never run on a pile of cheap student laptops over Wi-Fi with
 free tools. We made that work --- and here, watch, we kill one.''} This framing

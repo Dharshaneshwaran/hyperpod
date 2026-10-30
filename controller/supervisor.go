@@ -1,4 +1,4 @@
-// HyperPot Controller — Supervisor (Phase 2, Path A)
+// HyperPod Controller — Supervisor (Phase 2, Path A)
 //
 // Supervises a real llama.cpp RPC pipeline: one model split across the
 // registered healthy workers via `llama-server --rpc ... --tensor-split ...`.
@@ -7,12 +7,12 @@
 //
 // Config (env):
 //
-//	HYPERPOT_LLAMA_SERVER   path to llama-server binary (required for supervisor)
-//	HYPERPOT_MODEL          path to .gguf model (required for supervisor)
-//	HYPERPOT_SERVER_HOST    host llama-server binds to (default 127.0.0.1)
-//	HYPERPOT_SERVER_PORT    port llama-server binds to (default 9931)
-//	HYPERPOT_NGL            gpu layers (default 99)
-//	HYPERPOT_RPC_WORKERS    comma list host:port of ggml-rpc-server endpoints.
+//	HYPERPOD_LLAMA_SERVER   path to llama-server binary (required for supervisor)
+//	HYPERPOD_MODEL          path to .gguf model (required for supervisor)
+//	HYPERPOD_SERVER_HOST    host llama-server binds to (default 127.0.0.1)
+//	HYPERPOD_SERVER_PORT    port llama-server binds to (default 9931)
+//	HYPERPOD_NGL            gpu layers (default 99)
+//	HYPERPOD_RPC_WORKERS    comma list host:port of ggml-rpc-server endpoints.
 //	                        If set, these are used directly as the split targets.
 package main
 
@@ -48,7 +48,7 @@ type supervisor struct {
 	ngl         string
 
 	// small-tier model: a separate always-local llama-server (no split) for fast
-	// responses. Optional; enabled when HYPERPOT_SMALL_MODEL is set.
+	// responses. Optional; enabled when HYPERPOD_SMALL_MODEL is set.
 	smallModel string
 	smallPort  string
 	smallCmd   *exec.Cmd
@@ -120,17 +120,17 @@ var (
 )
 
 func newSupervisor() (*supervisor, bool) {
-	ls := os.Getenv("HYPERPOT_LLAMA_SERVER")
-	model := os.Getenv("HYPERPOT_MODEL")
+	ls := os.Getenv("HYPERPOD_LLAMA_SERVER")
+	model := os.Getenv("HYPERPOD_MODEL")
 	if ls == "" || model == "" {
 		return nil, false // supervisor mode not configured
 	}
-	host := envDefault("HYPERPOT_SERVER_HOST", "127.0.0.1")
-	port := envDefault("HYPERPOT_SERVER_PORT", "9931")
-	ngl := envDefault("HYPERPOT_NGL", "99")
+	host := envDefault("HYPERPOD_SERVER_HOST", "127.0.0.1")
+	port := envDefault("HYPERPOD_SERVER_PORT", "9931")
+	ngl := envDefault("HYPERPOD_NGL", "99")
 
 	var workers []string
-	if rw := os.Getenv("HYPERPOT_RPC_WORKERS"); rw != "" {
+	if rw := os.Getenv("HYPERPOD_RPC_WORKERS"); rw != "" {
 		for _, p := range strings.Split(rw, ",") {
 			if p = strings.TrimSpace(p); p != "" {
 				if isLocalEndpoint(p) {
@@ -141,7 +141,7 @@ func newSupervisor() (*supervisor, bool) {
 			}
 		}
 	}
-	waitSecs, err := strconv.Atoi(envDefault("HYPERPOT_INFER_WAIT_SECS", "120"))
+	waitSecs, err := strconv.Atoi(envDefault("HYPERPOD_INFER_WAIT_SECS", "120"))
 	if err != nil || waitSecs <= 0 {
 		waitSecs = 120
 	}
@@ -151,8 +151,8 @@ func newSupervisor() (*supervisor, bool) {
 		host:        host,
 		port:        port,
 		ngl:         ngl,
-		smallModel:  os.Getenv("HYPERPOT_SMALL_MODEL"), // optional
-		smallPort:   envDefault("HYPERPOT_SMALL_PORT", "9932"),
+		smallModel:  os.Getenv("HYPERPOD_SMALL_MODEL"), // optional
+		smallPort:   envDefault("HYPERPOD_SMALL_PORT", "9932"),
 		rpcWorkers:  workers,
 		inferWait:   time.Duration(waitSecs) * time.Second,
 	}, true
@@ -213,7 +213,7 @@ func (s *supervisor) launchSmall() error {
 		"-ngl", s.ngl,
 		"--host", s.host,
 		"--port", s.smallPort,
-		"-c", envDefault("HYPERPOT_CTX", "2048"),
+		"-c", envDefault("HYPERPOD_CTX", "2048"),
 	}
 	cmd := exec.Command(s.llamaServer, args...)
 	cmd.Stdout = os.Stdout
@@ -270,7 +270,7 @@ func (s *supervisor) launchLocked(workers []string) error {
 		"-ngl", s.ngl,
 		"--host", s.host,
 		"--port", s.port,
-		"-c", envDefault("HYPERPOT_CTX", "2048"),
+		"-c", envDefault("HYPERPOD_CTX", "2048"),
 		// Verbosity 4 makes llama.cpp print where every model buffer lives
 		// ("<device> model buffer size = N MiB"). We parse that as ground truth.
 		"-lv", "4",

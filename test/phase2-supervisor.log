@@ -1,4 +1,4 @@
-HyperPot Phase 2 — Supervisor (Path A) mechanism verified (26 Oct 2026)
+HyperPod Phase 2 — Supervisor (Path A) mechanism verified (26 Oct 2026)
 =======================================================================
 Controller gains SUPERVISOR mode: it launches `llama-server` with
 --rpc <workers> --tensor-split, waits on /health, proxies /completion,

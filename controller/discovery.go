@@ -1,4 +1,4 @@
-// HyperPot Controller — LAN auto-discovery (UDP broadcast listener).
+// HyperPod Controller — LAN auto-discovery (UDP broadcast listener).
 //
 // Workers periodically UDP-broadcast a small JSON announcement on DiscoveryPort.
 // The controller listens for these and auto-registers/refreshes the worker in
@@ -18,7 +18,7 @@ const DiscoveryPort = 50999
 
 // discoveryAnnounce is the payload a worker broadcasts.
 type discoveryAnnounce struct {
-	Type      string     `json:"type"` // "hyperpot-worker"
+	Type      string     `json:"type"` // "hyperpod-worker"
 	WorkerID  string     `json:"worker_id"`
 	Address   string     `json:"address"`  // http base, e.g. http://192.168.1.38:9100
 	RPCAddr   string     `json:"rpc_addr"` // host:port of this worker's ggml-rpc-server
@@ -47,9 +47,9 @@ func (s *server) startDiscovery() {
 		}
 		var a discoveryAnnounce
 		if err := json.Unmarshal(buf[:n], &a); err != nil {
-			continue // ignore non-HyperPot traffic
+			continue // ignore non-HyperPod traffic
 		}
-		if a.Type != "hyperpot-worker" || a.WorkerID == "" || !a.Telemetry.validVersion() {
+		if a.Type != "hyperpod-worker" || a.WorkerID == "" || !a.Telemetry.validVersion() {
 			continue
 		}
 		// If the worker did not know its own IP, fall back to the UDP source IP.

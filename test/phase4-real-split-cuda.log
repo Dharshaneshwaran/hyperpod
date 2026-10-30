@@ -1,4 +1,4 @@
-HyperPot — real 3B split across ROG + TUF (CUDA), measured 28 Oct 2026
+HyperPod — real 3B split across ROG + TUF (CUDA), measured 28 Oct 2026
 ======================================================================
 Hardware: ROG RTX 3050 (local, controller) + TUF RTX 4050 (llama.cpp b11909
 CUDA 12.4 ggml-rpc-server, started with -c cache). Same llama.cpp release on

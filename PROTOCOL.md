@@ -1,62 +1,181 @@
-# HyperPot Protocol (Phase 1)
+# HyperPod Protocol
 
-Transport: plain HTTP + JSON over the LAN/Wi-Fi.
-Phase 1 is single-node (controller + one worker on the same machine), but the
-protocol is designed so multiple workers can join later.
+Current protocol version: application messages are JSON over HTTP; worker
+discovery uses JSON over UDP. Worker telemetry has its own independently
+versioned schema (`schema_version: 1`).
+
+This protocol is intended for a **trusted local network only**. It currently has
+no authentication or encryption.
 
 ## Roles
-- **Controller (Go):** accepts user prompts, tracks workers, dispatches an
-  inference job to a worker, returns the generated text.
-- **Worker (Rust):** registers with the controller, sends heartbeats, runs
-  llama.cpp locally on a prompt, returns the generated text.
 
-## Endpoints (served by the Controller)
+- **Controller (Go):** worker registry, health, telemetry, measured split
+  scheduling, llama.cpp process supervision and public HTTP API.
+- **Worker agent (Rust):** collects telemetry, registers, sends heartbeats,
+  broadcasts discovery and exposes a whole-model `/run` fallback endpoint.
+- **llama.cpp RPC server:** exposes a worker accelerator at `host:50052`.
+- **llama.cpp server:** launched by the controller with healthy RPC endpoints and
+  optional measured `--tensor-split` weights.
 
-### POST /register
-Worker announces itself.
-Request:
+## Worker → controller
+
+### `POST /register`
+
 ```json
-{ "worker_id": "worker-A", "address": "http://127.0.0.1:9100", "gpu": "RTX 3050", "os": "linux" }
-```
-Response: `{ "ok": true }`
-
-### POST /heartbeat
-Worker proves it is alive (sent every few seconds).
-Request:
-```json
-{ "worker_id": "worker-A" }
-```
-Response: `{ "ok": true }`
-
-### POST /infer   (called by the USER)
-Ask the cluster to generate text.
-Request:
-```json
-{ "prompt": "In one sentence, what is a dragon?", "n_predict": 64 }
-```
-Response:
-```json
-{ "ok": true, "worker_id": "worker-A", "text": "A dragon is ..." }
-```
-If no healthy worker is available: `{ "ok": false, "error": "no healthy worker" }`
-
-### GET /status
-Human/debug view of known workers and their last-heartbeat age.
-
-## Endpoints (served by each Worker)
-
-### POST /run
-Controller tells the worker to run inference.
-Request:
-```json
-{ "prompt": "...", "n_predict": 64 }
-```
-Response:
-```json
-{ "ok": true, "text": "..." }
+{
+  "worker_id": "worker-TUF",
+  "address": "http://192.168.1.5:9100",
+  "rpc_addr": "192.168.1.5:50052",
+  "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+  "os": "windows",
+  "telemetry": {
+    "schema_version": 1,
+    "collected_at_unix_ms": 1793379939410,
+    "gpu": {
+      "source": "nvidia-smi",
+      "name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+      "vram_total_mib": 6141,
+      "vram_free_mib": 5843,
+      "utilization_percent": 0,
+      "temperature_celsius": 50,
+      "power_draw_watts": 4.09,
+      "power_limit_watts": null
+    },
+    "memory": {
+      "source": "windows-cim",
+      "total_mib": 16003,
+      "available_mib": 4845
+    },
+    "power": {
+      "source": "windows-cim-wmi",
+      "battery_percent": 84,
+      "ac_online": true
+    }
+  }
+}
 ```
 
-## Health rule
-A worker is "healthy" if its last heartbeat was within `HEARTBEAT_TIMEOUT`
-(default 10s). This timeout is the foundation that later phases use to detect a
-dead node and trigger failover.
+Unknown groups and values are `null`, never fabricated zeros. The legacy `gpu`
+field is retained for compatibility; `telemetry.gpu` is authoritative.
+
+### `POST /heartbeat`
+
+Sent every three seconds. Telemetry is sampled by one shared collector every
+five seconds.
+
+```json
+{
+  "worker_id": "worker-TUF",
+  "telemetry": { "schema_version": 1, "collected_at_unix_ms": 1793379939410, "gpu": null, "memory": null, "power": null }
+}
+```
+
+A missing telemetry object is accepted for compatibility and preserves the last
+snapshot. An unsupported schema version is rejected with HTTP 400. If a
+heartbeat fails (including after a controller restart), the worker re-registers.
+
+### UDP discovery on port `50999`
+
+Workers broadcast the registration identity plus the current telemetry snapshot:
+
+```json
+{
+  "type": "hyperpod-worker",
+  "worker_id": "worker-TUF",
+  "address": "http://192.168.1.5:9100",
+  "rpc_addr": "192.168.1.5:50052",
+  "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+  "os": "windows",
+  "telemetry": { "schema_version": 1, "collected_at_unix_ms": 1793379939410, "gpu": null, "memory": null, "power": null }
+}
+```
+
+Discovery works only within one broadcast domain.
+
+## Public controller API
+
+### `GET /status`
+
+Returns worker identity, health, last-seen age, whether the worker is local, and
+the complete nullable telemetry snapshot.
+
+### `GET /pipeline`
+
+Returns the supervised big-tier process state and the real placement parsed from
+llama.cpp logs:
+
+```json
+{
+  "ok": true,
+  "enabled": true,
+  "description": "CPU_Mapped 308 MiB + CUDA0 842 MiB + RPC0[192.168.1.5:50052] 1076 MiB",
+  "pipeline": {
+    "generation": 1,
+    "state": "ready",
+    "rpc_workers": ["192.168.1.5:50052"],
+    "devices": [
+      {"device": "CPU_Mapped", "mib": 308.23},
+      {"device": "CUDA0", "mib": 842.41},
+      {"device": "RPC0[192.168.1.5:50052]", "mib": 1075.95}
+    ],
+    "offloaded": "29/29",
+    "split": true,
+    "scheduler_strategy": "measured-free-vram",
+    "tensor_split": "5331,3204",
+    "split_weights_mib": [5331, 3204],
+    "vram_reserve_mib": 512,
+    "loading_secs": 0,
+    "ready_secs": 59.7
+  }
+}
+```
+
+Weight order is RPC workers first, then the local GPU. Each measured weight is
+`free_vram_mib - 512`. If a required measurement is unavailable, no custom
+weights are supplied and the strategy reports a `llama.cpp-auto (...)` reason.
+
+### `POST /infer`
+
+```json
+{
+  "prompt": "In one sentence, what is distributed computing?",
+  "n_predict": 64,
+  "tier": "big"
+}
+```
+
+- `small`: local Llama 3.2 1B server (if configured).
+- `big` or omitted: supervised configurable model, split across healthy workers.
+
+A successful response reports real placement:
+
+```json
+{
+  "ok": true,
+  "worker_id": "big tier · split",
+  "text": "...",
+  "placement": "CPU_Mapped 308 MiB + CUDA0 842 MiB + RPC0[192.168.1.5:50052] 1076 MiB",
+  "split": true
+}
+```
+
+If the big model is still loading, the API returns HTTP 503 with
+`"loading": true`; loading continues in the background. If llama-server exits
+after an RPC failure, HyperPod rebuilds over reachable survivors and retries.
+
+## Controller → worker fallback
+
+### `POST /run`
+
+The Phase 1 whole-model fallback endpoint remains available:
+
+```json
+{"prompt":"...", "n_predict":64}
+```
+
+```json
+{"ok":true, "text":"...", "error":""}
+```
+
+This is not the layer-split path. Distributed placement is performed by the
+controller-supervised llama.cpp RPC backend.

@@ -1,94 +1,113 @@
-# HyperPot — HANDOFF (resume here tomorrow)
+# HyperPod Handoff
 
-_Last session: 26 Oct 2026, ~23:50. Everything below is committed + pushed to_
-_`https://github.com/Dharshaneshwaran/hyperpod` (latest commit: Phase 2 recovery)._
+Last updated: 30 October 2026.
+Repository: https://github.com/Dharshaneshwaran/hyperpod
 
----
+## Current verified state
 
-## 1. One-line status
-Core is DONE and VERIFIED: one Llama model splits across ROG + TUF over Wi-Fi,
-and when a laptop is killed the controller detects it (~2s) and automatically
-rebuilds over the survivor and keeps serving. The "kill a laptop, AI survives"
-demo works on real hardware.
+- Canonical name: **HyperPod** / `hyperpod`.
+- Controller: Go; worker: Rust; inference/device offload: llama.cpp; UI: React.
+- Trusted LAN discovery, registration and recurring heartbeats work across Linux
+  and Windows.
+- Telemetry schema v1 reports nullable NVIDIA GPU/VRAM/load/temperature/power,
+  system RAM and battery/AC measurements.
+- Scheduler uses measured free VRAM minus 512 MiB/device. It never derives
+  capacity from a model name; missing measurements invoke an explicit
+  `llama.cpp-auto` fallback.
+- The dashboard shows worker telemetry, scheduler weights and placement parsed
+  from llama.cpp's own load log.
+- Local tests: Go 7 tests; Rust 5 tests; strict Rust clippy; Go vet/build; React
+  production build. React lint has one non-blocking set-state-in-effect warning.
+- CI is intentionally out of scope by user request; tests remain local.
 
-## 2. What is DONE (verified, not assumed)
-- Phase 0: kill-test — proved plain llama.cpp RPC CRASHES on node loss.
-  Evidence: `test/killtest2.log`, docs section 12.
-- Phase 1: Go controller + Rust worker + llama.cpp; verified single-machine AND
-  cross-machine (ROG controller <-> TUF worker over Wi-Fi).
-  Evidence: `test/phase1-crossmachine.log`.
-- Phase 2 (Path A): real model split across ROG+TUF + AUTOMATIC RECOVERY.
-  Evidence: `test/phase2-recovery-VERIFIED.log` (shows gen1 -> node DOWN -> gen2 REBUILT).
+## Latest ROG/TUF measurement
 
-## 3. What is LEFT (in priority order)
-1. **Rubric strategy (HIGH VALUE for winning).** See `docs/STRATEGY_rubric_TODO.md`.
-   - Impact (30%) and creative Meta use (25%) are our weak areas = 55% of score.
-   - Decide the lead beneficiary (school/clinic/field-site) + problem statement.
-   - Decide the creative Meta angle (e.g. local Llama + Meta Model API fallback).
-   - OPEN QUESTIONS to answer: (a) do we have Meta Model API $150 credits?
-     (b) which beneficiary is most genuine?
-   - WATCH OUT (anti-projects list): do NOT pitch as "AI tutor" or "medical tool".
-     Pitch as INFRASTRUCTURE; school/clinic is only the demo setting.
-2. **Demo polish.** Script the live "kill a laptop" demo; RECORD a backup video
-   (never rely on live Wi-Fi in front of judges). Rubric Demo = 25%.
-3. **Stretch (only if time):** seamless token-resume instead of restart+rerun.
-   High risk, parked. See `docs/PHASE2_design_pathA.md`.
+Worker telemetry before model load:
 
-## 4. HOW TO RUN IT (exact steps to reproduce the working demo)
+- TUF Windows, RTX 4050: 5,843 / 6,141 MiB VRAM; 50°C; 4.09 W;
+  4,845 / 16,003 MiB RAM; battery 84%; AC online.
+- ROG Linux, RTX 3050: 3,716 / 4,096 MiB VRAM at scheduling time.
 
-### Hardware / IPs
-- ROG (Linux, RTX 3050) = controller + llama-server. Wi-Fi IP `192.168.1.20`.
-- TUF (Windows, RTX 4050) = rpc-server. Wi-Fi IP `192.168.1.38`.
-- Both must be on the SAME Wi-Fi (phone hotspot is most reliable).
+Scheduler:
 
-### On the TUF (Windows) — just one command, NO git pull needed
-```
-C:\llama\ggml-rpc-server.exe -H 0.0.0.0 -p 50052
-```
-(The TUF only runs this llama.cpp binary; our code lives on the ROG.)
-
-### On the ROG (Linux) — run the verification demo
-```
-# confirm TUF reachable
-timeout 5 bash -c 'cat </dev/null >/dev/tcp/192.168.1.38/50052' && echo UP
-
-# run the kill-recovery demo (kill the TUF when it prints the banner)
-bash /tmp/verify-recovery.sh
-```
-Expect log: gen1 split over TUF -> "RPC worker ... is DOWN" -> gen2 "REBUILT
-over survivors" -> prompt after recovery answered -> "TRUE RECOVERY VERIFIED".
-
-NOTE: if `/tmp/verify-recovery.sh` is gone (temp), it is reproduced from
-`scripts/run-supervisor.sh` logic; env vars are documented in that script.
-
-## 5. KEY TECHNICAL FACTS (so we don't re-learn them)
-- Build tools installed on ROG via **linuxbrew** (no sudo): cmake, go. Rust via rustup.
-- llama.cpp built at `test/llama.cpp/build/bin/` with `-DGGML_CUDA=ON -DGGML_RPC=ON`.
-  Binaries: `llama-cli`, `llama-server`, `ggml-rpc-server`.
-- Model: `test/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf` (small on purpose).
-- Controller supervisor mode env: HYPERPOT_LLAMA_SERVER, HYPERPOT_MODEL,
-  HYPERPOT_RPC_WORKERS (comma host:port), HYPERPOT_SERVER_PORT=9931, HYPERPOT_CTX=2048.
-- RECOVERY DESIGN: `controller/supervisor.go`
-  - `remoteHeavySplit()` gives remotes a 4:1 share so a dead node truly breaks things.
-  - `monitorWorkers()` TCP-probes active RPC workers every 2s; on death it rebuilds
-    llama-server over survivors (this is what makes recovery fire deterministically).
-- GOTCHA: this sandbox SIGTERMs backgrounded processes when the spawning command
-  returns. Always run multi-step tests as ONE self-contained script.
-- Recovery = restart pipeline + RE-RUN request (short pause). NOT seamless token
-  resume (that is the parked stretch goal).
-
-## 6. REPO MAP
-```
-controller/   Go  — main.go (API+registry+recovery), supervisor.go (llama-server supervisor)
-worker/       Rust — src/main.rs (register, heartbeat, /run, runs llama-cli)
-scripts/      run-controller.sh, run-worker.sh, run-rpc-server.sh, run-supervisor.sh
-test/         llama.cpp build (gitignored), model (gitignored), evidence *.log
-docs/         HyperPot_v1/Simplified/*.tex+pdf, STRATEGY_rubric_TODO.md,
-              PHASE2_design_pathA.md, this handoff
-PROTOCOL.md   controller<->worker message format
+```text
+TUF RPC:   5843 - 512 = 5331
+ROG local: 3716 - 512 = 3204
+--tensor-split 5331,3204
 ```
 
-## 7. SUGGESTED FIRST MOVE TOMORROW
-Start with the rubric strategy conversation (Impact + Meta use) — it is the
-highest-leverage thing left for actually winning, and it is thinking/decisions,
-not heavy coding. Answer the two open questions in section 3.1 first.
+Actual Llama 3.2 3B placement:
+
+```text
+CPU_Mapped                         308 MiB
+CUDA0 (ROG RTX 3050)              842 MiB
+RPC0[192.168.1.5:50052] (TUF)   1076 MiB
+29/29 layers; split=true; ready in 60 seconds
+```
+
+Evidence: `test/phase5-telemetry-scheduler.log`, commit `8354e7f`.
+
+## Earlier verified evidence
+
+- Native llama.cpp RPC failure: `test/killtest2.log` and LaTeX evidence section.
+- Cross-machine Phase 1: `test/phase1-crossmachine.log`.
+- Supervisor/recovery development: `test/phase2-*`, `test/phase3-*`.
+- Real 3B CUDA split and recovery: `test/phase4-real-split-cuda.log`,
+  `test/phase4-kill-test.log`.
+- Llama 3.1 8B capacity split: `test/phase4-8b-split.log`.
+
+## Important claim boundaries
+
+- HyperPod is not a speed-up system on the tested Wi-Fi; split 3B was much
+  slower than ROG-only inference.
+- Recovery is process restart + request retry, not KV-cache/token checkpointing.
+- The real physical kill restored the next request. Same-request retry was
+  verified by local SIGABRT simulation and still needs a final physical test.
+- The 8B experiment proves pooled capacity but cannot survive loss of the TUF in
+  the two-node topology.
+- RPC and controller endpoints are unauthenticated. Trusted LAN only.
+
+## Running the current demo
+
+The canonical local path is `/mnt/newvolume/meta/hyperpod`.
+
+Linux controller:
+
+```bash
+bash launchers/start-controller.sh
+cd frontend
+VITE_CONTROLLER=http://CONTROLLER_IP:8080 npm run dev
+```
+
+Windows worker:
+
+1. Edit `launchers/start-worker.bat` once for controller IP and paths.
+2. Run it to start the cached CUDA RPC server and Rust agent.
+3. The agent re-registers automatically if the controller restarts.
+
+Internal identifiers are now also renamed:
+
+- binaries: `hyperpod-controller`, `hyperpod-worker`
+- environment prefix: `HYPERPOD_`
+- discovery type: `hyperpod-worker`
+
+The Windows worker must be replaced after this breaking rename before the next
+cross-machine test.
+
+## Remaining work (ordered)
+
+1. Rebuild/cross-compile and install the renamed Windows worker.
+2. Set up the second TUF and verify three-node → two-node same-request recovery.
+3. Run repeatable native-vs-HyperPod benchmarks.
+4. Finalize beneficiary/impact wording after participant portal fields are
+   supplied.
+5. Add screenshots, architecture graphic, demo script and backup video.
+6. Fresh-clone rehearsal and release checklist.
+
+## User decisions still required
+
+- Project source-code license: Apache-2.0, MIT, or remain unlicensed.
+- Lead beneficiary.
+- Participant-only submission form/rules screenshots.
+
+No CI will be added.

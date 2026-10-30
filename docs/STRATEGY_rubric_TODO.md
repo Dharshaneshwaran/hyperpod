@@ -1,4 +1,4 @@
-# HyperPot — Rubric Strategy Note (ADDRESS LATER)
+# HyperPod — Rubric Strategy Note (ADDRESS LATER)
 
 > Status: PARKED. This is recorded now to act on after the core build (Phase 2/3).
 > It does NOT need to be done yet. It is the plan for making the submission score well.
@@ -16,7 +16,7 @@ the score like this:
 
 Scored 0–10 per criterion; same rubric in Stage 2 and the final round.
 
-## Where HyperPot stands (honest self-assessment)
+## Where HyperPod stands (honest self-assessment)
 - **Technical depth (20%) — STRONG.** Fault tolerance, heartbeats, failover,
   Go+Rust+llama.cpp. This is our home turf. Already real in Phase 1.
 - **Demo (25%) — STRONG.** "Kill a laptop, AI keeps talking" is tailor-made.
@@ -33,7 +33,7 @@ Move from "basic integration" to "creative use" by using Meta tooling THREE ways
 tied to the fault-tolerance engine:
 1. **Local Meta Llama** (open-weights GGUF) runs on the laptop pool normally.
 2. **Meta Model API fallback** ($150 hackathon credits): when the pool degrades
-   (a node dies), HyperPot can fall back to the cloud Llama to keep serving, then
+   (a node dies), HyperPod can fall back to the cloud Llama to keep serving, then
    switch back to local when the pool heals.
 3. **(Optional) Multi-model speculative decoding:** small Llama drafts on each
    node, larger Llama split across the pool verifies.
@@ -56,7 +56,7 @@ laptops → a private, offline AI tutor.
 
 The hook that turns our TECH into IMPACT:
 > "Those laptops are unreliable — students take them, Wi-Fi drops. Every existing
-> tool crashes when that happens (we proved it in the kill-test). HyperPot is the
+> tool crashes when that happens (we proved it in the kill-test). HyperPod is the
 > only one that survives — which is what makes pooled laptops actually usable in
 > the real world, not just a lab toy."
 
@@ -109,15 +109,15 @@ simple image analyzers, dashboards-as-main-feature, AI job screeners,
 personality analyzers, basic RAG apps, Streamlit apps, **"AI for Education"
 chatbots**, AI nutrition coaches, sports analyzers/coaches.
 
-**Good news:** HyperPot is NOT on this list. Every banned item is a thin app
-wrapper around a model; HyperPot is INFRASTRUCTURE (distributed fault-tolerant
+**Good news:** HyperPod is NOT on this list. Every banned item is a thin app
+wrapper around a model; HyperPod is INFRASTRUCTURE (distributed fault-tolerant
 inference). This list actually rewards building infra over another chatbot.
 
 **CRITICAL framing caution:** our parked impact examples (school tutor, clinic
 notes) brush against two banned items — "AI for Education" chatbots and
 AI medical advice. Therefore:
-- DO NOT pitch HyperPot as "an AI tutor" or "a medical tool".
-- DO pitch HyperPot as "fault-tolerant distributed inference INFRASTRUCTURE",
+- DO NOT pitch HyperPod as "an AI tutor" or "a medical tool".
+- DO pitch HyperPod as "fault-tolerant distributed inference INFRASTRUCTURE",
   with the school/clinic only as an *example setting of who benefits*.
 - The demo shows the infra running a Llama model and surviving a killed node —
   not an education or medical application.

@@ -1,4 +1,4 @@
-HyperPot Phase 1 — Cross-Machine Validation (26 Oct 2026)
+HyperPod Phase 1 — Cross-Machine Validation (26 Oct 2026)
 =========================================================
 Controller: ROG (RTX 3050, Linux)   192.168.1.20:8080
 Worker:     TUF (RTX 4050, Windows) 192.168.1.38:9100  id=worker-TUF

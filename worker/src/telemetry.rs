@@ -108,7 +108,7 @@ fn optional_u64(value: &str) -> Option<u64> {
     }
 }
 
-/// Collect the first NVIDIA GPU reported by nvidia-smi. HyperPot currently
+/// Collect the first NVIDIA GPU reported by nvidia-smi. HyperPod currently
 /// exposes one RPC accelerator per laptop; multi-GPU hosts are future work.
 fn collect_nvidia_gpu() -> Option<GpuTelemetry> {
     let output = command_output(

@@ -1,4 +1,4 @@
-// HyperPot Controller (Phase 1)
+// HyperPod Controller (Phase 1)
 //
 // The coordinator. It:
 //   - lets workers register        (POST /register)
@@ -403,7 +403,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	addr := os.Getenv("HYPERPOT_CONTROLLER_ADDR")
+	addr := os.Getenv("HYPERPOD_CONTROLLER_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
@@ -471,7 +471,7 @@ func main() {
 	mux.HandleFunc("GET /status", s.handleStatus)
 	mux.HandleFunc("GET /pipeline", s.handlePipeline)
 
-	log.Printf("HyperPot controller listening on %s", addr)
+	log.Printf("HyperPod controller listening on %s", addr)
 	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {
 		log.Fatalf("controller failed: %v", err)
 	}

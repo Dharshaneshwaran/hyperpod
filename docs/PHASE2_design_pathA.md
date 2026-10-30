@@ -1,4 +1,4 @@
-# HyperPot — Phase 2 Design Decision (Path A: Supervised Split)
+# HyperPod — Phase 2 Design Decision (Path A: Supervised Split)
 
 Date: 26 Oct 2026. Status: ACTIVE (building now).
 
@@ -47,7 +47,7 @@ restart), applied to distributed inference.
 - Seamless token-level resume (continue exact token) ...... NO -> STRETCH GOAL
 
 So the demo is: "kill a laptop -> llama.cpp crashes like it always does -> the
-HyperPot controller detects it, rebuilds the pipeline on the survivors, and
+HyperPod controller detects it, rebuilds the pipeline on the survivors, and
 re-runs your request automatically -> you still get your answer."
 
 ## Parked stretch goal (only if time remains at the very end)

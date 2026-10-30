@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Launch a local ggml-rpc-server (for single-machine split testing) fully detached.
 set -e
-BASE=/mnt/newvolume/meta/HyperPot
+BASE=/mnt/newvolume/meta/hyperpod
 BIN="$BASE/test/llama.cpp/build/bin/ggml-rpc-server"
 HOST="${1:-127.0.0.1}"
 PORT="${2:-50052}"

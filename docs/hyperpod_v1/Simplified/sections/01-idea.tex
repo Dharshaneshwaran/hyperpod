@@ -3,8 +3,8 @@
 \label{sec:idea}
 % ---------------------------------------------------------------------
 
-\subsection{What HyperPot is}
-HyperPot is a distributed LLM system that uses \textbf{consumer laptops as shared
+\subsection{What HyperPod is}
+HyperPod is a distributed LLM system that uses \textbf{consumer laptops as shared
 computing resources}. Instead of renting a cloud GPU or needing one expensive
 machine, several everyday laptops pool their compute and memory to run a model
 together.
@@ -24,7 +24,7 @@ The project begins from an existing three-part design:
 
 \subsection{The defining problem it solves}
 The laptops belong to real people and sit on Wi-Fi, so they come and go: a lid
-closes, Wi-Fi drops, a battery dies. HyperPot's defining capability is to
+closes, Wi-Fi drops, a battery dies. HyperPod's defining capability is to
 \textbf{survive that} --- to keep generating the answer even when a laptop
 vanishes mid-sentence. This is the one thing the project is built around.
 
@@ -32,7 +32,7 @@ vanishes mid-sentence. This is the one thing the project is built around.
 \begin{itemize}[leftmargin=1.4em,nosep]
   \item \Drop\ \textbf{Distributed fine-tuning / training.} It overlaps existing
   projects (Petals, QVAC Fabric), is far harder to make fault-tolerant, and adds
-  nothing to the live demo. HyperPot is \textbf{inference only}. If personalization
+  nothing to the live demo. HyperPod is \textbf{inference only}. If personalization
   is wanted, a small LoRA adapter can be trained offline on one machine
   beforehand --- never distributed training during the event. \HYP
   \item \Drop\ \textbf{Beating anyone on raw speed.} Faster heterogeneous

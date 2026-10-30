@@ -1,7 +1,7 @@
 % =====================================================================
 %  main.tex — MASTER FILE (compile this one)
 %
-%  A simplified, verified guide to HyperPot: a fault-tolerant distributed
+%  A simplified, verified guide to HyperPod: a fault-tolerant distributed
 %  LLM inference system that pools consumer laptops over Wi-Fi. Explains
 %  the idea, WHY it is defensible (with evidence vs. existing projects),
 %  the exact technology stack, the hardware, the MVP plan, benchmarks,
@@ -15,10 +15,10 @@
 \documentclass[11pt]{article}
 \input{preamble}
 
-\title{\vspace{-1.5em}\textbf{HyperPot}\\[0.2em]
+\title{\vspace{-1.5em}\textbf{HyperPod}\\[0.2em]
 \large Fault-Tolerant Distributed LLM Inference on a Pool of Consumer Laptops\\[0.3em]
 \normalsize A Simplified, Evidence-Tagged Idea \& Build Guide}
-\author{\normalsize HyperPot --- Meta Global AI Developer Hackathon (Indie Track)}
+\author{\normalsize HyperPod --- Meta Global AI Developer Hackathon (Indie Track)}
 \date{\normalsize Version 1.0}
 
 \begin{document}
@@ -26,8 +26,8 @@
 \thispagestyle{fancy}
 
 \begin{abstract}
-\noindent This document explains HyperPot in plain language: what it is, the one
-problem it solves, and exactly how it will be built. HyperPot pools ordinary
+\noindent This document explains HyperPod in plain language: what it is, the one
+problem it solves, and exactly how it will be built. HyperPod pools ordinary
 student laptops --- across different GPUs and operating systems, connected over
 Wi-Fi --- into a single cluster that runs a Meta Llama model. Its defining
 capability is \textbf{fault tolerance}: when one laptop drops off the network
@@ -37,7 +37,7 @@ keeps streaming. Every important claim here is tagged \VER\ (verified from a
 source), \HYP\ (a reasoned hypothesis), or \UNK\ (unknown / unproven), so the
 reader knows exactly what to trust. The guide is honest about novelty: the
 \emph{algorithm} of load-aware failure recovery already exists in datacenter
-research; HyperPot's contribution is bringing it down to a pile of cheap,
+research; HyperPod's contribution is bringing it down to a pile of cheap,
 unreliable laptops on Wi-Fi using only free tools --- and making it demonstrable
 live. The final chapters give the technology stack, the hardware map, a
 phase-by-phase MVP plan to the submission deadline, measurable benchmarks, and

@@ -1,4 +1,4 @@
-# HyperPot Launchers (no-typing demo start)
+# HyperPod Launchers (no-typing demo start)
 
 Double-click / one-command launchers so laptops join the pool without typing
 commands. Auto-discovery means workers appear in the dashboard automatically.
@@ -30,12 +30,12 @@ commands. Auto-discovery means workers appear in the dashboard automatically.
 1. Edit `launchers/start-worker.bat` CONFIG block once (CONTROLLER_IP, paths).
 2. **Double-click `start-worker.bat`.** It opens two windows:
    - `ggml-rpc-server` (lends compute)
-   - `hyperpot-worker` (broadcasts presence -> auto-appears in dashboard)
+   - `hyperpod-worker` (broadcasts presence -> auto-appears in dashboard)
 3. First time only, allow UDP 50999 + TCP 50052/9100 through Windows Firewall:
    ```
-   netsh advfirewall firewall add rule name="HyperPot Discovery 50999" dir=in action=allow protocol=UDP localport=50999
-   netsh advfirewall firewall add rule name="HyperPot RPC 50052" dir=in action=allow protocol=TCP localport=50052
-   netsh advfirewall firewall add rule name="HyperPot Worker 9100" dir=in action=allow protocol=TCP localport=9100
+   netsh advfirewall firewall add rule name="HyperPod Discovery 50999" dir=in action=allow protocol=UDP localport=50999
+   netsh advfirewall firewall add rule name="HyperPod RPC 50052" dir=in action=allow protocol=TCP localport=50052
+   netsh advfirewall firewall add rule name="HyperPod Worker 9100" dir=in action=allow protocol=TCP localport=9100
    ```
 
 ## The demo flow
@@ -46,5 +46,5 @@ commands. Auto-discovery means workers appear in the dashboard automatically.
    big-tier pipeline rebuilds over survivors and keeps serving.
 
 ## Stop
-- Linux: `pkill -f ggml-rpc-server ; pkill -f hyperpot-worker ; pkill -f hyperpot-controller`
+- Linux: `pkill -f ggml-rpc-server ; pkill -f hyperpod-worker ; pkill -f hyperpod-controller`
 - Windows: close the opened windows.

@@ -1,4 +1,4 @@
-HyperPot — kill test on the real 3B split (ROG + TUF CUDA), 28 Oct 2026
+HyperPod — kill test on the real 3B split (ROG + TUF CUDA), 28 Oct 2026
 ======================================================================
 Split (from llama.cpp load log, cached load ready after 137 s):
   CPU_Mapped 308 MiB + CUDA0 552 MiB + RPC0[192.168.1.5:50052] 1366 MiB

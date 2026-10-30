@@ -1,4 +1,4 @@
-HyperPot — Llama 3.1 8B Q4 split across ROG + TUF, 28 Oct 2026
+HyperPod — Llama 3.1 8B Q4 split across ROG + TUF, 28 Oct 2026
 =============================================================
 Model: Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf (4.9 GB), verified byte-exact vs HF.
 This is the genuine "too big for one laptop" case: 8B Q4 does NOT fit the ROG's

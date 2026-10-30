@@ -1,4 +1,4 @@
-HyperPot — Monitor detection FIXED (27 Oct 2026)
+HyperPod — Monitor detection FIXED (27 Oct 2026)
 ================================================
 Problem: the proactive monitor rebuilt the split spuriously even when the TUF
 was alive.

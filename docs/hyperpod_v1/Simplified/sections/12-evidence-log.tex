@@ -3,7 +3,7 @@
 \label{sec:evidence}
 % ---------------------------------------------------------------------
 
-This chapter records the de-risking experiment run \emph{before} any HyperPot
+This chapter records the de-risking experiment run \emph{before} any HyperPod
 code was written, to verify the core premise on the actual demo laptops rather
 than relying only on documentation.
 
@@ -52,10 +52,10 @@ Aborted (core dumped)
   documentation (\S\ref{sec:landscape}).
   \item \VER\ \textbf{The failure is realistic, not contrived.} It was triggered
   by ordinary Wi-Fi instability --- no deliberate kill was even needed. This is
-  precisely the scenario HyperPot targets.
+  precisely the scenario HyperPod targets.
   \item \textbf{Answer to ``does it restart from the beginning?''} No --- plain
   llama.cpp does not restart at all; it crashes and must be re-launched by hand.
-  HyperPot's contribution is to make the controller detect the loss, re-route the
+  HyperPod's contribution is to make the controller detect the loss, re-route the
   work, and \textbf{automatically re-run the request} so generation continues.
 \end{itemize}
 
@@ -64,5 +64,5 @@ The crash here came partly from random Wi-Fi drops during a large transfer to a
 CPU-only node. For a reproducible stage demo, the ``kill'' should be a
 \textbf{deliberate, clean action} (Ctrl+C on the remote server, or lid-close)
 rather than relying on chance packet loss. The before/after contrast ---
-llama.cpp aborts vs HyperPot recovers --- is the core of the demonstration. Both
+llama.cpp aborts vs HyperPod recovers --- is the core of the demonstration. Both
 log files (\code{killtest.log}, \code{killtest2.log}) are retained as evidence.

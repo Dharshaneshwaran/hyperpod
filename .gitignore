@@ -9,11 +9,11 @@ test/*.log
 worker/target/
 
 # Go compiled binary
-controller/hyperpot-controller
-controller/hyperpot-controller.exe
+controller/hyperpod-controller
+controller/hyperpod-controller.exe
 
 # Worker compiled binary (if copied around)
-hyperpot-worker
+hyperpod-worker
 
 # LaTeX build intermediates (keep main.pdf; drop aux/log/toc)
 docs/**/*.aux

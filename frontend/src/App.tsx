@@ -208,7 +208,7 @@ export default function App() {
     <div className="shell">
       {/* icon rail */}
       <aside className="rail">
-        <div className="rail-logo" title="HyperPot">
+        <div className="rail-logo" title="HyperPod">
           <IconAffiliate size={20} />
         </div>
         {nav.map((n) => (
@@ -226,7 +226,7 @@ export default function App() {
 
       {/* section sidebar */}
       <aside className="side">
-        <div className="side-title">HyperPot</div>
+        <div className="side-title">HyperPod</div>
         <div className="side-group">Cluster</div>
         {nav.map((n) => (
           <button
@@ -573,6 +573,7 @@ export default function App() {
           <kbd>3</kbd> switch page
           <span className="sep" />
           <kbd>Esc</kbd> close panel
+          <span className="built-with">Built with Llama</span>
         </footer>
       </div>
 
