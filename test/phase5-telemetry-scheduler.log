@@ -1,0 +1,36 @@
+HyperPot — real telemetry + measured scheduling on ROG/TUF (30 Oct 2026)
+============================================================================
+Controller: ROG Linux, RTX 3050 Laptop GPU
+Worker:     TUF Windows, RTX 4050 Laptop GPU, 192.168.1.5
+Model:      Llama 3.2 3B Q4_K_M, llama.cpp RPC over Wi-Fi
+
+Worker telemetry received through registration/heartbeats (before load):
+  source: nvidia-smi
+  GPU: NVIDIA GeForce RTX 4050 Laptop GPU
+  VRAM: 5843 free / 6141 total MiB
+  utilization: 0%; temperature: 50 C; draw: 4.09 W; power limit: null
+  system RAM: 4845 free / 16003 total MiB (windows-cim)
+  battery: 84%; AC online: true (windows-cim-wmi)
+
+Controller local free VRAM measured by nvidia-smi: 3716 MiB.
+Scheduler policy: measured free VRAM minus 512 MiB reserve per device.
+llama.cpp tensor-split order: RPC workers first, local GPU last.
+Computed weights:
+  TUF RPC: 5843 - 512 = 5331 MiB
+  ROG local: 3716 - 512 = 3204 MiB
+  --tensor-split 5331,3204
+Strategy reported by /pipeline: measured-free-vram (not inferred from GPU names).
+
+Actual placement reported by llama.cpp after loading:
+  CPU_Mapped                         308 MiB
+  CUDA0 (ROG RTX 3050)              842 MiB
+  RPC0[192.168.1.5:50052] (TUF)   1076 MiB
+  29/29 layers offloaded; split=true; ready after 60 s.
+
+Inference response:
+  "Distributed computing is a method of processing tasks and solving complex
+   problems by dividing them into smaller parts and distributing them across
+   a network of computers or devices."
+
+After load, the recurring heartbeat measured TUF VRAM at 4441/6141 MiB,
+confirming live telemetry refresh while the distributed pipeline was resident.
