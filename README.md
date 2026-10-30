@@ -41,13 +41,20 @@ Overview shows the topology and the placement llama.cpp actually loaded:
 ![HyperPod overview with three-machine model placement](docs/assets/dashboard-overview.png)
 
 Nodes shows measured hardware. The Windows worker reports real VRAM, load and
-temperature; the Mac reports `Unavailable` instead of a fabricated GPU value:
+temperature; the Mac reports its real Apple chip and unified-memory figures:
 
 ![HyperPod nodes with measured telemetry](docs/assets/dashboard-nodes.png)
 
-The detail panel lists every measured field and names its collection source:
+The detail panel lists every measured field and names its collection source.
+Windows via `nvidia-smi` and CIM/WMI:
 
 ![HyperPod measured node telemetry](docs/assets/dashboard-node-telemetry.png)
+
+macOS via `system_profiler`, `sysctl`/`vm_stat` and `pmset`. Apple Silicon
+shares one memory pool, so there is no separate free-VRAM value to measure and
+those fields stay `Unavailable` instead of reusing system RAM:
+
+![HyperPod measured macOS telemetry](docs/assets/dashboard-node-telemetry-mac.png)
 
 The playground reports which devices served each answer:
 
