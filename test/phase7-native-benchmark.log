@@ -1,0 +1,49 @@
+HyperPod benchmark evidence — 30 Oct 2026
+==========================================
+Model/prompt/hardware/network methodology: see BENCHMARKS.md.
+
+ROG-only native (seconds; completion tokens; decode tok/s)
+  1  1.566279  116  75.64
+  2  1.526849  115  75.68
+  3  1.623160  122  75.51
+  4  1.543359  116  75.54
+  5  1.505013  113  75.45
+  median latency 1.543 s; median decode 75.54 tok/s
+
+Direct native llama.cpp ROG+TUF split
+  1   7.122067  119  18.13
+  2  15.025144  121   9.17
+  3   8.157370  114  20.91
+  4  13.807109  120   9.94
+  5  11.946718  120  13.19
+  median latency 11.947 s; median decode 13.19 tok/s
+
+HyperPod ROG+TUF split
+  1  10.739138  622 chars  15.30 tok/s
+  2  10.920040  654 chars  19.04 tok/s
+  3  15.930167  718 chars   9.12 tok/s
+  4  11.804272  659 chars  11.79 tok/s
+  5  14.323843  730 chars   9.94 tok/s
+  median latency 11.804 s; median decode 11.79 tok/s
+
+Physical native failure, same 3B ROG+TUF split
+  native ready: 23:26:21
+  request start: 23:27:45
+  TUF RPC stopped by operator: ~23:28
+  client failure: curl rc=52, HTTP 000, elapsed=34.06s
+  process alive 5s later: no; health: HTTP 000; no restart
+  llama.cpp: "Remote RPC server crashed or returned malformed response"
+
+Physical HyperPod heterogeneous recovery
+  See phase6-three-node-recovery.log: ROG+TUF+M4 -> M4 killed -> ROG+TUF,
+  same request retried, gen2 ready in 33s, 75.68s total, 1937 chars.
+
+Physical HyperPod failure, same TUF endpoint and 3B profile
+  warm placement: CPU 308 + ROG CUDA0 842 + TUF RPC0 1076 MiB
+  scheduler: measured-free-vram weights=5331,3204; reserve=512 MiB/device
+  request start: 23:33:15
+  generation 1 aborted after physical TUF RPC stop: 23:33:19
+  dead TUF RPC skipped; generation 2 local-only launched: 23:33:21
+  generation 2 ready: 23:33:22 (CPU 308 + CUDA0 1918 MiB)
+  same HTTP request: ok=true, split=false, 1828 chars, 11.31s total
+  result: underlying llama.cpp aborted, but HyperPod rebuilt and retried.
