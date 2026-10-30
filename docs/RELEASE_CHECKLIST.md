@@ -28,8 +28,9 @@ invent them.
 - [x] `THIRD_PARTY_NOTICES.md` includes Llama and llama.cpp notices.
 - [x] `Built with Llama` appears in README and dashboard.
 - [ ] Choose project source license: Apache-2.0, MIT, or intentionally unlicensed.
-- [ ] Add final architecture SVG and screenshots.
-- [ ] Check every README link from GitHub.
+- [x] Add final architecture SVG.
+- [ ] Add final dashboard screenshots.
+- [x] Check every README link from a fresh clone.
 - [ ] Add repository description and topics (requires owner approval).
 - [ ] Confirm no models, secrets, private IP credentials or temporary files are tracked.
 - [ ] Confirm `git status` is clean and local HEAD equals `origin/main`.
@@ -58,10 +59,10 @@ npm run lint
 
 Expected current state:
 
-- [ ] Go: 7 tests pass; vet/build pass.
-- [ ] Rust: 5 tests pass; clippy/release build pass.
-- [ ] React: production build passes.
-- [ ] Resolve or document the current React `set-state-in-effect` lint warning.
+- [x] Go: 7 tests pass; vet/build pass (fresh clone `4cb7f4d`).
+- [x] Rust: 5 tests pass; clippy/release build pass (fresh clone `4cb7f4d`).
+- [x] React: `npm ci`, production build and lint pass; zero warnings after fix.
+- [x] Resolve the React `set-state-in-effect` lint warning.
 - [ ] Windows package starts on TUF.
 - [ ] macOS Rust worker and b11909 RPC server start on M4.
 
@@ -100,7 +101,7 @@ Expected current state:
 - [ ] Three-machine actual placement screenshot.
 - [ ] Recovered ROG+TUF placement screenshot.
 - [ ] Native-vs-HyperPod benchmark graphic.
-- [ ] Architecture SVG.
+- [x] Architecture SVG.
 - [ ] Main 100–120 second demo take.
 - [ ] Backup demo take.
 - [ ] Verify text is readable at normal player size.

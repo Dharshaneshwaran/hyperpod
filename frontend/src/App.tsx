@@ -114,9 +114,12 @@ export default function App() {
   }, [page]);
 
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 1500);
-    return () => clearInterval(id);
+    const initial = window.setTimeout(() => void refresh(), 0);
+    const id = window.setInterval(refresh, 1500);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(id);
+    };
   }, [refresh]);
 
   // keyboard: Ctrl/Cmd+K search, 1/2/3 switch pages, Esc closes panel
