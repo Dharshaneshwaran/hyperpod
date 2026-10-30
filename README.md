@@ -17,12 +17,12 @@ normal control-plane event.
 
 | Result | Measured evidence |
 |---|---|
-| Cross-platform pool | Linux ROG RTX 3050 controller + Windows TUF RTX 4050 worker over Wi-Fi |
-| Real 3B split | llama.cpp placed 842 MiB on ROG CUDA0 and 1,076 MiB on TUF RPC0 after measured scheduling |
+| Cross-platform pool | Linux ROG RTX 3050 controller + Windows TUF RTX 4050 + M4 Mac/Metal over Wi-Fi |
+| Real 3B split | llama.cpp placed weights on ROG CUDA, TUF RPC and M4 RPC in the three-machine test |
 | Measured scheduling | Weights `5331,3204` from free VRAM `5843,3716` minus 512 MiB/device; no GPU-name inference |
 | Real 8B capacity run | Llama 3.1 8B Q4: 1,073 MiB on ROG GPU + 3,330 MiB on TUF GPU; 6.68 tok/s |
 | Real worker-loss recovery | Killing TUF RPC caused llama-server to abort; HyperPod rebuilt 3B on ROG in about 3 seconds; the next request succeeded |
-| Same-request retry | Verified with a local SIGABRT simulation; still needs one final physical-laptop re-test |
+| Same-request retry | Physically verified for both M4 loss (three→two nodes) and TUF loss (two→local) |
 | Live telemetry | GPU/VRAM/load/temperature/power, RAM, battery and AC state from `nvidia-smi` and OS interfaces |
 
 Raw evidence is committed under [`test/*.log`](test/). The latest measured
@@ -153,15 +153,15 @@ See [`PROTOCOL.md`](PROTOCOL.md) for schemas.
   llama-server aborts when an RPC peer dies. HyperPod launches a new topology.
 - **Two-node 8B is capacity-only.** The 8B Q4 model does not fit wholly in the
   ROG's VRAM, so losing the TUF cannot currently preserve that placement.
-- **The physical same-request retry still needs a final re-test.** Real recovery
-  of subsequent requests is verified; same-request retry is verified by local
-  process-abort simulation.
+- **Same-request recovery restarts inference.** Physical M4 and TUF failures are
+  verified, but HyperPod does not preserve already generated tokens or KV cache.
 - **Scheduler scope:** weights use measured usable VRAM. Compute throughput and
   network bandwidth are displayed/researched but are not yet scheduler inputs.
 - **Discovery is one local broadcast domain.** Routed networks require manual
   endpoints or a future discovery mechanism.
-- **macOS telemetry is partially implemented, but Metal multi-node execution is
-  not yet validated.**
+- **macOS/Metal RPC was validated in one heterogeneous three-machine run.**
+  Metal free-memory telemetry remains unavailable, so mixed placement explicitly
+  uses llama.cpp's own device probing.
 
 ## Why Meta open weights matter
 
