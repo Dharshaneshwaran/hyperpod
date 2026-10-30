@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">HyperPod architecture and recovery flow</title>
+  <desc id="desc">React dashboard connects to a Go control plane which discovers and measures Rust workers, schedules llama.cpp across ROG CUDA, TUF CUDA and M4 Metal, and rebuilds after a worker RPC failure.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/></marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#175cd3"/></marker>
+    <style>
+      .bg{fill:#f5f7fa}.panel{fill:#fff;stroke:#d9e0e7;stroke-width:2}.blue{fill:#175cd3}.blueSoft{fill:#eaf2ff;stroke:#84adff;stroke-width:2}.greenSoft{fill:#eafaf2;stroke:#32a66a;stroke-width:2}.orangeSoft{fill:#fff5e6;stroke:#e59b2f;stroke-width:2}.redSoft{fill:#fff0f0;stroke:#d64545;stroke-width:2}.t{font-family:Inter,Arial,sans-serif;fill:#16212b}.h{font-size:34px;font-weight:700}.sub{font-size:18px;fill:#52606d}.label{font-size:20px;font-weight:700}.small{font-size:15px;fill:#52606d}.white{fill:#fff}.line{stroke:#52606d;stroke-width:3;fill:none;marker-end:url(#arrow)}.lineBlue{stroke:#175cd3;stroke-width:4;fill:none;marker-end:url(#arrowBlue)}.dash{stroke:#d64545;stroke-width:4;stroke-dasharray:10 8;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1600" height="900"/>
+  <text class="t h" x="80" y="70">HyperPod: measured local inference and recovery</text>
+  <text class="t sub" x="80" y="105">Built with Llama · trusted local network · Go control plane + Rust agents + llama.cpp</text>
+
+  <rect class="panel" x="80" y="150" width="270" height="150" rx="14"/>
+  <text class="t label" x="115" y="200">React dashboard</text>
+  <text class="t small" x="115" y="235">Nodes and telemetry</text>
+  <text class="t small" x="115" y="260">Requested vs actual placement</text>
+  <text class="t small" x="115" y="285">Inference and recovery status</text>
+
+  <rect class="blue" x="480" y="135" width="640" height="190" rx="18"/>
+  <text class="t label white" x="520" y="185">Go control plane</text>
+  <rect x="520" y="210" width="170" height="75" rx="10" fill="#fff" opacity=".96"/>
+  <rect x="715" y="210" width="170" height="75" rx="10" fill="#fff" opacity=".96"/>
+  <rect x="910" y="210" width="170" height="75" rx="10" fill="#fff" opacity=".96"/>
+  <text class="t small" x="545" y="240">Discovery +</text><text class="t small" x="545" y="263">worker registry</text>
+  <text class="t small" x="741" y="240">Measured VRAM</text><text class="t small" x="741" y="263">scheduler</text>
+  <text class="t small" x="939" y="240">Process supervisor</text><text class="t small" x="939" y="263">+ request retry</text>
+
+  <path class="lineBlue" d="M350 225 H470"/>
+  <text class="t small" x="385" y="212">HTTP</text>
+
+  <rect class="blueSoft" x="95" y="410" width="360" height="190" rx="16"/>
+  <text class="t label" x="130" y="455">ROG · Linux</text>
+  <text class="t small" x="130" y="487">Controller + llama-server</text>
+  <text class="t small" x="130" y="515">RTX 3050 · local CUDA</text>
+  <text class="t small" x="130" y="543">Local VRAM via nvidia-smi</text>
+  <text class="t small" x="130" y="571">CPU-mapped embeddings</text>
+
+  <rect class="greenSoft" x="620" y="410" width="360" height="190" rx="16"/>
+  <text class="t label" x="655" y="455">TUF · Windows</text>
+  <text class="t small" x="655" y="487">Rust agent + RPC server</text>
+  <text class="t small" x="655" y="515">RTX 4050 · remote CUDA</text>
+  <text class="t small" x="655" y="543">VRAM/load/temp via nvidia-smi</text>
+  <text class="t small" x="655" y="571">RAM/power via CIM + WMI</text>
+
+  <rect class="orangeSoft" x="1145" y="410" width="360" height="190" rx="16"/>
+  <text class="t label" x="1180" y="455">M4 Mac · macOS</text>
+  <text class="t small" x="1180" y="487">Rust agent + RPC server</text>
+  <text class="t small" x="1180" y="515">Remote Metal device</text>
+  <text class="t small" x="1180" y="543">Unified RAM via sysctl</text>
+  <text class="t small" x="1180" y="571">Battery/AC via pmset</text>
+
+  <path class="line" d="M640 325 C570 365 390 365 300 405"/>
+  <path class="line" d="M800 325 V400"/>
+  <path class="line" d="M960 325 C1040 365 1220 365 1300 405"/>
+  <text class="t small" x="372" y="365">local CUDA</text>
+  <text class="t small" x="814" y="370">RPC / Wi-Fi</text>
+  <text class="t small" x="1090" y="365">RPC / Wi-Fi</text>
+
+  <rect class="panel" x="95" y="675" width="1410" height="150" rx="16"/>
+  <text class="t label" x="130" y="720">Verified recovery path</text>
+  <rect class="redSoft" x="390" y="695" width="230" height="85" rx="12"/>
+  <text class="t small" x="420" y="730">Mac RPC stops</text>
+  <text class="t small" x="420" y="755">llama-server aborts</text>
+  <path class="dash" d="M630 737 H745"/>
+  <rect class="blueSoft" x="760" y="695" width="300" height="85" rx="12"/>
+  <text class="t small" x="790" y="730">HyperPod excludes Mac</text>
+  <text class="t small" x="790" y="755">rebuilds ROG + TUF</text>
+  <path class="lineBlue" d="M1070 737 H1180"/>
+  <rect class="greenSoft" x="1195" y="695" width="260" height="85" rx="12"/>
+  <text class="t small" x="1225" y="730">Same request retried</text>
+  <text class="t small" x="1225" y="755">response returned</text>
+  <text class="t small" x="130" y="760">3 nodes → 2 nodes</text>
+  <text class="t small" x="130" y="785">33 s reload</text>
+  <text class="t small" x="130" y="810">75.68 s total request</text>
+</svg>

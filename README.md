@@ -47,23 +47,21 @@ telemetry and scheduler run is
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    UI[React dashboard] -->|HTTP| C[Go controller]
-    C --> R[Worker registry + telemetry]
-    C --> S[Measured VRAM scheduler]
-    C --> P[llama.cpp supervisor]
-    W1[Rust worker · Windows] -->|register / heartbeat| C
-    W2[Rust worker · Linux] -->|UDP discovery| C
-    W1 -->|nvidia-smi / CIM / WMI| T1[Measured telemetry]
-    W2 -->|nvidia-smi / proc / power_supply| T2[Measured telemetry]
-    P -->|local CUDA| G0[ROG RTX 3050]
-    P -->|RPC over trusted LAN| G1[TUF RTX 4050]
-```
+![HyperPod architecture and recovery flow](docs/assets/hyperpod-architecture.svg)
+
+Detailed control flow, telemetry sources, recovery sequence and trust boundaries:
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 The controller does not implement transformer kernels. llama.cpp performs the
 actual layer/device offload. HyperPod adds discovery, measured placement,
 observability, process supervision and recovery around it.
+
+Supporting material:
+
+- [Benchmarks and physical failure results](BENCHMARKS.md)
+- [Submission narrative](docs/SUBMISSION_DRAFT.md)
+- [Demo script](docs/DEMO_SCRIPT.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
 
 ## Repository layout
 
