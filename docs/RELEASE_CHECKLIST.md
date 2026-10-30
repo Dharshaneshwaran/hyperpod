@@ -29,7 +29,7 @@ invent them.
 - [x] `Built with Llama` appears in README and dashboard.
 - [ ] Choose project source license: Apache-2.0, MIT, or intentionally unlicensed.
 - [x] Add final architecture SVG.
-- [ ] Add final dashboard screenshots.
+- [x] Add final dashboard screenshots.
 - [x] Check every README link from a fresh clone.
 - [ ] Add repository description and topics (requires owner approval).
 - [ ] Confirm no models, secrets, private IP credentials or temporary files are tracked.
@@ -95,10 +95,10 @@ Expected current state:
 
 ## Video and screenshots
 
-- [ ] Three-machine topology screenshot.
-- [ ] TUF measured telemetry screenshot.
-- [ ] Mixed scheduler fallback screenshot.
-- [ ] Three-machine actual placement screenshot.
+- [x] Three-machine topology screenshot.
+- [x] TUF measured telemetry screenshot.
+- [x] Mixed scheduler fallback screenshot (shown on Overview).
+- [x] Three-machine actual placement screenshot.
 - [ ] Recovered ROG+TUF placement screenshot.
 - [x] Native-vs-HyperPod benchmark graphic.
 - [x] Architecture SVG.

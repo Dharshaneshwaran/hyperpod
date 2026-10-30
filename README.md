@@ -31,6 +31,28 @@ telemetry and scheduler run is
 
 ![HyperPod measured benchmark and failure results](docs/assets/hyperpod-benchmarks.svg)
 
+## Dashboard
+
+Captured from the live three-machine cluster: a Linux ROG controller, a Windows
+TUF worker and an M4 Mac worker.
+
+Overview shows the topology and the placement llama.cpp actually loaded:
+
+![HyperPod overview with three-machine model placement](docs/assets/dashboard-overview.png)
+
+Nodes shows measured hardware. The Windows worker reports real VRAM, load and
+temperature; the Mac reports `Unavailable` instead of a fabricated GPU value:
+
+![HyperPod nodes with measured telemetry](docs/assets/dashboard-nodes.png)
+
+The detail panel lists every measured field and names its collection source:
+
+![HyperPod measured node telemetry](docs/assets/dashboard-node-telemetry.png)
+
+The playground reports which devices served each answer:
+
+![HyperPod playground answer with real placement](docs/assets/dashboard-playground.png)
+
 ## What HyperPod does
 
 - Discovers worker agents through UDP broadcast on a local subnet.

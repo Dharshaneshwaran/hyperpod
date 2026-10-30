@@ -190,10 +190,10 @@ export default function App() {
     }
   };
 
-  // topology geometry
+  // topology geometry. R leaves room for the labels drawn below each node.
   const V = 460;
   const C = V / 2;
-  const R = 150;
+  const R = 128;
   const remote = workers.filter((w) => !w.local);
   const localNode = workers.find((w) => w.local);
   const pos = remote.map((_, i) => {
@@ -342,8 +342,8 @@ export default function App() {
                         onClick={() => setSelected(w)}
                       >
                         <circle r={32} />
-                        <text y={-3} className="tn-id">{w.worker_id.replace("worker-", "")}</text>
-                        <text y={12} className="tn-s">{w.healthy ? w.gpu : "DOWN"}</text>
+                        <text y={52} className="tn-id">{w.worker_id.replace("worker-", "")}</text>
+                        <text y={70} className="tn-s">{w.healthy ? w.gpu : "DOWN"}</text>
                       </g>
                     );
                   })}
