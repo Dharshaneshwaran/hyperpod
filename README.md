@@ -205,12 +205,12 @@ makes it possible to demonstrate three deployment profiles locally:
 
 No model weights are committed to this repository.
 
-## Attribution and licensing status
+## Attribution and licensing
 
-**Built with Llama.** Llama 3.1 and Llama 3.2 are licensed by Meta under their
-respective Community License Agreements. See
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+HyperPod's own source code is licensed under the Apache License 2.0. See
+[`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
 
-A project-level license for HyperPod's original source code has **not** yet been
-selected. The public repository is source-available, but no reuse license is
-granted until the owner adds one.
+**Built with Llama.** The models are not part of this repository and carry
+Meta's own terms. Llama 3.1 and Llama 3.2 are licensed under their respective
+Community License Agreements; llama.cpp is MIT. Source links and acceptable-use
+policies are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

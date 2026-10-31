@@ -1,7 +1,8 @@
 # Third-Party Notices
 
-HyperPod's original source code does not currently have a project-level license.
-The components and model files used with it have their own licenses and terms.
+HyperPod's own source code is licensed under the Apache License 2.0; see
+`LICENSE` and `NOTICE`. The components and model files used with it have their
+own licenses and terms, listed below.
 
 ## Meta Llama 3.2
 
