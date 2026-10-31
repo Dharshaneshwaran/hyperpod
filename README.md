@@ -103,7 +103,7 @@ frontend/     Vite + React + TypeScript dashboard
 launchers/    Windows/Linux demo launchers
 PROTOCOL.md   Current controller/worker wire contract
 test/         Committed evidence logs (models/builds are ignored)
-docs/         Research, design decisions and handoff material
+docs/         Architecture, demo script, submission draft, release checklist, images
 ```
 
 ## Demo setup
