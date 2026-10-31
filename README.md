@@ -105,7 +105,7 @@ launchers/    Windows/Linux demo launchers
 PROTOCOL.md   Current controller/worker wire contract
 test/         Committed evidence logs (models/builds are ignored)
 docs/         Architecture, demo script, submission draft, release checklist, images
-docs/report/  LaTeX source and PDF of the measured technical report
+docs/report/  Measured technical report (PDF)
 ```
 
 ## Demo setup
