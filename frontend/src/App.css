@@ -417,3 +417,51 @@ textarea:focus { border-color: var(--primary); }
   color: var(--foreground);
   font-weight: 600;
 }
+
+
+/* ---------- connecting animation ---------- */
+.connecting-ring {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-full);
+  top: -80px;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: translateX(-50%) scale(0.8);
+    opacity: 1;
+    border-color: var(--primary);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(-50%) scale(0.8);
+    opacity: 1;
+  }
+}
+
+.connecting-label {
+  position: absolute;
+  top: -140px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.topo-wrapper {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
