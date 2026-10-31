@@ -1,0 +1,92 @@
+\section{Experimental setup}
+\label{sec:setup}
+
+\subsection{Machines}
+
+All three machines are personally owned consumer laptops on one domestic Wi-Fi
+network. Nothing was rented, and no datacentre hardware was involved.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Hardware. Video memory figures are as reported by the machine itself
+through the sources in Table~\ref{tab:sources}.}
+\label{tab:hardware}
+\begin{tabular}{@{}lllrr@{}}
+\toprule
+\textbf{Role} & \textbf{Machine} & \textbf{Accelerator} & \textbf{GPU memory} & \textbf{System RAM} \\
+\midrule
+Controller      & ASUS ROG, Linux   & RTX 3050 Laptop, CUDA & \SI{4096}{MiB} & \SI{15234}{MiB} \\
+Remote worker   & ASUS TUF, Windows & RTX 4050 Laptop, CUDA & \SI{6141}{MiB} & \SI{16003}{MiB} \\
+Remote worker   & MacBook Air, macOS & Apple M4, Metal      & unified        & \SI{16384}{MiB} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The Mac row carries no separate GPU memory figure because Apple Silicon has no
+separate pool to report. Its \SI{16384}{MiB} is one unified allocation shared
+between CPU and GPU.
+
+\subsection{Software}
+
+Both NVIDIA machines run \texttt{llama.cpp} release \code{b11909}, built with
+CUDA and RPC support, at RPC protocol 8.0.1. The Mac runs the official
+\code{b11909} macOS arm64 build. Keeping one release across all three machines
+removed protocol mismatch as a variable. Every remote
+\code{ggml-rpc-server} runs with \code{-c}, which caches received tensors on the
+worker's own disk so that only the first load transfers weights over Wi-Fi.
+
+\subsection{Models}
+
+\begin{itemize}[leftmargin=1.4em,itemsep=2pt]
+  \item \textbf{Llama 3.2 1B Instruct}, Q4\_K\_M --- local fallback profile.
+  \item \textbf{Llama 3.2 3B Instruct}, Q4\_K\_M, \SI{2.0}{GB} --- used for every
+        split and recovery experiment. It fits in the controller's GPU alone,
+        which is what allows the controller to take over after a worker is lost.
+  \item \textbf{Llama 3.1 8B Instruct}, Q4\_K\_M, \SI{4.9}{GB} --- capacity
+        experiment. Verified byte-for-byte against the published artefact. It
+        does not fit in the controller's \SI{4096}{MiB} GPU alone.
+\end{itemize}
+
+No weights are committed to the repository. Context length was 2{,}048 tokens
+throughout.
+
+\subsection{Network}
+
+A \SI{5}{GHz} Wi-Fi network. Link conditions were recorded at measurement time
+because they are the dominant variable in every distributed figure here. During
+the benchmark runs of Section~\ref{sec:perf} the controller reported
+\SI{-56}{dBm} with driver-reported rates of \SI{780}{Mbit/s} receive and
+\SI{292.5}{Mbit/s} transmit. During the earliest model transfers, several days
+before, the same link reported \SI{-66}{dBm} to \SI{-68}{dBm} and
+\SI{26}{Mbit/s} to \SI{29}{Mbit/s} transmit. These are physical-layer rates
+negotiated by the driver, not achieved application throughput, and the gap
+between the two sessions explains why first-load times differ so widely in
+Section~\ref{sec:load}.
+
+\subsection{Method}
+
+Performance figures come from five sequential requests against an
+already-loaded model, using one fixed prompt asking for a 100-word explanation
+of distributed computing, capped at 160 output tokens. Normal sampling was left
+enabled, so output lengths vary slightly between runs; we therefore report
+medians and full ranges rather than a single best run. End-to-end latency is
+\code{curl}'s \code{time\_total}. Decode throughput is taken from
+\texttt{llama.cpp}'s own per-request timing line, using the \code{eval time}
+figure and excluding \code{prompt eval time}; it is never derived from response
+character counts.
+
+Three configurations were measured:
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=2pt]
+  \item \textbf{Local baseline} --- \texttt{llama.cpp} on the controller alone,
+        no RPC.
+  \item \textbf{Native split} --- \texttt{llama.cpp} directly, with the Windows
+        RPC endpoint and the same tensor weights HyperPod had computed.
+  \item \textbf{HyperPod split} --- the same split reached through the Go
+        controller.
+\end{enumerate}
+
+Comparing the second and third isolates the control plane, since the inference
+path is identical. Failure experiments were performed by stopping a
+\code{ggml-rpc-server} process by hand while a request was in flight; no
+failures were simulated in software for the results reported here.

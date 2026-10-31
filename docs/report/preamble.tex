@@ -1,0 +1,92 @@
+% =====================================================================
+%  preamble.tex — shared setup for the HyperPod technical report.
+%  Plot conventions follow the common arXiv/NeurIPS single-column look:
+%  boxed axes, light grids, small fonts, one solid series with filled
+%  markers against one dashed series with open markers.
+% =====================================================================
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{fancyhdr}
+\usepackage{textcomp}
+\usepackage{siunitx}
+\sisetup{detect-all,group-separator={,},group-minimum-digits=4}
+\usepackage{newunicodechar}
+\usepackage[hidelinks]{hyperref}
+
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{groupplots}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc,fit,backgrounds}
+
+\extrafloats{120}
+
+% ---- Unicode safety -------------------------------------------------
+\newunicodechar{→}{\ensuremath{\rightarrow}}
+\newunicodechar{≈}{\ensuremath{\approx}}
+\newunicodechar{≤}{\ensuremath{\leq}}
+\newunicodechar{≥}{\ensuremath{\geq}}
+\newunicodechar{×}{\ensuremath{\times}}
+\newunicodechar{·}{\ensuremath{\cdot}}
+\newunicodechar{–}{--}
+\newunicodechar{—}{---}
+\newunicodechar{°}{\ensuremath{^\circ}}
+
+% ---- Page furniture -------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small HyperPod — Measured Report}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+
+\captionsetup{font=small,labelfont=bf,justification=justified,singlelinecheck=false}
+
+% ---- Column types ---------------------------------------------------
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+% ---- Plot palette ---------------------------------------------------
+% One saturated blue and one crimson, as in the reference layout.
+\definecolor{serA}{RGB}{31,110,189}   % blue   — solid, filled markers
+\definecolor{serB}{RGB}{199,43,104}   % crimson— dashed, open markers
+\definecolor{serC}{RGB}{90,100,110}   % slate  — dotted, square markers
+\definecolor{panelA}{RGB}{247,250,254}
+\definecolor{panelB}{RGB}{254,248,250}
+
+% Shared axis style for every data panel in this report.
+\pgfplotsset{
+  hpaxis/.style={
+    axis lines=box,
+    line width=0.35pt,
+    grid=both,
+    grid style={gray!16,very thin},
+    tick align=outside,
+    tick style={gray!50,thin},
+    tick label style={font=\tiny},
+    label style={font=\tiny},
+    title style={font=\scriptsize,yshift=1pt},
+    legend style={font=\tiny,draw=gray!45,fill=white,fill opacity=0.9,
+                  text opacity=1,inner sep=1.6pt,row sep=-1pt},
+    legend cell align=left,
+    max space between ticks=28,
+  },
+  solidA/.style={color=serA,mark=*,mark size=1.5pt,line width=0.9pt,
+                 mark options={fill=serA,draw=serA}},
+  dashedB/.style={color=serB,mark=o,mark size=1.6pt,line width=0.9pt,dashed,
+                  mark options={fill=white,draw=serB,solid}},
+  dottedC/.style={color=serC,mark=square*,mark size=1.3pt,line width=0.9pt,
+                  densely dotted,mark options={fill=serC,draw=serC,solid}},
+}

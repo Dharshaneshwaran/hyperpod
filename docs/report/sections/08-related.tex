@@ -1,0 +1,47 @@
+\section{Related work}
+\label{sec:related}
+
+HyperPod sits on top of existing work rather than replacing it, and the ideas it
+uses are not new. This section records what belongs to others.
+
+\paragraph{\texttt{llama.cpp} and its RPC backend.}
+All inference here is performed by \texttt{llama.cpp}: GGUF loading,
+quantised kernels, CUDA and Metal execution, and the RPC backend that exposes a
+remote accelerator. The ability to combine the memory of several machines is
+therefore upstream functionality, not ours. What upstream does not provide, and
+explicitly describes as out of scope for a proof-of-concept backend, is
+surviving the loss of a peer. That gap is what HyperPod addresses.
+
+\paragraph{Consumer-hardware distributed inference.}
+Running a single model across several personal devices has been explored by
+other projects, including work that schedules layers according to each device's
+capability and work that distributes models across volunteer machines over the
+public internet. Capability-aware placement in particular is well established;
+our scheduler is a deliberately simple instance of it, using one measured
+quantity. We make no novelty claim for the idea of weighting devices by
+available memory.
+
+\paragraph{Fault tolerance in serving systems.}
+Detecting a failed node, excluding it, and restarting work on the survivors is
+standard practice in distributed systems and in datacentre model serving. The
+mechanisms used here --- heartbeats, health timeouts, endpoint probing, process
+supervision, request retry --- are all conventional. Their combination on three
+mismatched laptops over domestic Wi-Fi, with the resulting costs measured, is
+the part we contribute.
+
+\paragraph{Meta open-weight models.}
+The models are Meta's: Llama~3.2 1B and 3B, and Llama~3.1 8B, used as published
+GGUF quantisations. HyperPod does not fine-tune or modify them. Access to
+open weights is what makes the work possible at all, because the system moves
+model weights between physical devices and reads back where they landed. An
+API-only model exposes no such surface.
+
+\paragraph{Where this work differs.}
+Three things distinguish what is reported here from the surrounding work. The
+placement figures are read out of the inference engine's own load output rather
+than assumed from the requested split, which is how we found our tensor-order
+bug. Unavailable hardware values are preserved as unavailable all the way to the
+interface, so the Mac's missing video-memory figure is visible instead of being
+filled in. And the failure experiments were performed by stopping real processes
+on real machines during live requests, with the resulting logs committed, rather
+than by injecting faults in software.

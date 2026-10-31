@@ -89,6 +89,7 @@ observability, process supervision and recovery around it.
 
 Supporting material:
 
+- [Technical report (PDF, 15 pages)](docs/report/main.pdf) — full method, figures and limitations
 - [Benchmarks and physical failure results](BENCHMARKS.md)
 - [Submission narrative](docs/SUBMISSION_DRAFT.md)
 - [Demo script](docs/DEMO_SCRIPT.md)
@@ -104,6 +105,7 @@ launchers/    Windows/Linux demo launchers
 PROTOCOL.md   Current controller/worker wire contract
 test/         Committed evidence logs (models/builds are ignored)
 docs/         Architecture, demo script, submission draft, release checklist, images
+docs/report/  LaTeX source and PDF of the measured technical report
 ```
 
 ## Demo setup

@@ -1,0 +1,67 @@
+\section{Limitations}
+\label{sec:limitations}
+
+These are stated plainly because each one changes what the measurements in
+Section~\ref{sec:results} mean.
+
+\paragraph{It is slower, not faster.}
+Distributing the 3B model over this Wi-Fi network cost roughly a factor of six
+in decode throughput against the single local GPU. HyperPod buys aggregate
+memory and recovery; it does not buy speed. Anyone whose model already fits on
+one machine should run it on one machine.
+
+\paragraph{Recovery restarts, it does not resume.}
+When a worker is lost, \texttt{llama.cpp} aborts and HyperPod starts a new
+model process and re-runs the request from the beginning. Tokens already
+generated are discarded and the KV cache is not preserved. The user sees one
+delayed response rather than a partial one, but the work is genuinely repeated.
+Continuing from the interrupted token would require state checkpointing inside
+the inference engine, which we did not attempt.
+
+\paragraph{The 8B configuration is not fault tolerant on two machines.}
+The 8B model does not fit in the controller's \SI{4096}{MiB} GPU alone, so
+losing the remote worker leaves nowhere for its \SI{3330}{MiB} share to go.
+That configuration demonstrates pooled capacity only. All recovery results in
+this report use the 3B model, which the controller can hold by itself.
+
+\paragraph{The scheduler uses memory, not speed.}
+Weights are derived from free video memory. Compute throughput, link bandwidth
+and link latency are measured and displayed but do not influence placement. A
+fast GPU behind a weak link therefore receives the same share as a fast GPU
+behind a strong one, which is not optimal.
+
+\paragraph{Metal devices fall back to the engine's own placement.}
+Apple Silicon reports no separate free-video-memory figure, so no comparable
+weight can be computed for it. Mixed CUDA and Metal clusters use
+\texttt{llama.cpp}'s own device probing, reported as
+\code{llama.cpp-auto}. The three-machine placement in
+Figure~\ref{fig:placement} was chosen by \texttt{llama.cpp}, not by HyperPod.
+
+\paragraph{Joining does not trigger a rebuild.}
+A worker that appears after a model is loaded is registered and displayed but is
+not added to the running pipeline. Rebuilds happen on failure, not on arrival.
+We hit this during our own screenshot session: a freshly started worker sat idle
+until the pipeline was rebuilt.
+
+\paragraph{The controller is a single point of failure.}
+Worker loss is handled; controller loss is not. If the controller stops, the
+cluster stops. Workers do re-register automatically when it returns, but
+in-flight work is lost.
+
+\paragraph{No authentication or encryption.}
+The \texttt{llama.cpp} RPC backend is documented upstream as insecure, and
+HyperPod adds no authentication of its own. The controller API, the worker
+endpoints and the discovery broadcast all assume a trusted local network. None
+of these ports should be exposed to the internet.
+
+\paragraph{Discovery covers one broadcast domain.}
+Workers are found by UDP broadcast, so they must share a subnet with the
+controller. Routed networks require explicitly configured endpoints.
+
+\paragraph{The sample sizes are small.}
+Performance figures are five runs per configuration on one network on one day.
+That is adequate to show a factor-of-six gap between local and distributed
+inference, and inadequate to resolve the \SI{0.143}{\second} median difference
+between native and HyperPod splits. Each load time in
+Figure~\ref{fig:load} is a single observation. Each failure experiment was run
+once in the form reported.

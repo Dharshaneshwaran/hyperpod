@@ -1,0 +1,319 @@
+\section{Results}
+\label{sec:results}
+
+\subsection{Measured telemetry}
+
+Before any model was loaded, the workers reported the figures in
+Table~\ref{tab:telemetry}. These are the values the scheduler consumes.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Worker telemetry as received by the controller. Dashes mark fields the
+platform does not expose; these are transmitted as \code{null} and shown in the
+dashboard as \textit{Unavailable}.}
+\label{tab:telemetry}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+ & \textbf{TUF (Windows)} & \textbf{M4 Mac} \\
+\midrule
+GPU name           & RTX 4050 Laptop   & Apple M4 \\
+GPU memory, free / total & \SI{5843}{} / \SI{6141}{MiB} & --- \\
+GPU utilisation    & \SI{0}{\percent}  & --- \\
+GPU temperature    & \SI{50}{\celsius} & --- \\
+GPU power draw     & \SI{4.09}{W}      & --- \\
+GPU power limit    & ---               & --- \\
+System RAM, available / total & \SI{4845}{} / \SI{16003}{MiB} & \SI{5938}{} / \SI{16384}{MiB} \\
+Battery, AC        & \SI{84}{\percent}, online & \SI{16}{\percent}, online \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The Windows GPU power limit is blank because \code{nvidia-smi} returned
+\code{[N/A]} on that machine. The Mac's GPU rows are blank because macOS
+publishes no per-GPU memory, utilisation, temperature or power figure for Apple
+Silicon through the interfaces we use. Both cases are reported as unavailable
+rather than filled with a substitute.
+
+\subsection{Scheduling and actual placement}
+
+With both NVIDIA devices reporting free memory, the scheduler produced weights
+directly from measurement:
+
+\[
+\underbrace{5843 - 512}_{\text{TUF RPC}} = 5331,
+\qquad
+\underbrace{3716 - 512}_{\text{ROG local}} = 3204,
+\qquad\Rightarrow\quad
+\texttt{--tensor-split 5331,3204}
+\]
+
+Figure~\ref{fig:placement} shows the placement \texttt{llama.cpp} subsequently
+reported for four configurations. These are read back from its load output, not
+inferred from the request.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+\begin{axis}[hpaxis,
+  width=11.6cm,height=5.0cm,
+  ybar stacked, bar width=18pt,
+  ymin=0,ymax=5200,
+  ylabel={model weights (MiB)},
+  symbolic x coords={3B three machines,3B after Mac loss,3B after TUF loss,8B two machines},
+  xtick=data,
+  x tick label style={font=\tiny,align=center},
+  legend style={at={(0.5,1.14)},anchor=north,legend columns=4,draw=gray!45},
+  nodes near coords={},
+  grid=major,
+  ]
+% CPU-mapped
+\addplot+[fill=serC!35,draw=serC!70,bar shift=0pt]
+  coordinates {(3B three machines,308) (3B after Mac loss,308) (3B after TUF loss,308) (8B two machines,282)};
+% ROG local CUDA
+\addplot+[fill=serA!55,draw=serA,bar shift=0pt]
+  coordinates {(3B three machines,552) (3B after Mac loss,896) (3B after TUF loss,1918) (8B two machines,1073)};
+% TUF RPC
+\addplot+[fill=green!45!black!55,draw=green!35!black,bar shift=0pt]
+  coordinates {(3B three machines,398) (3B after Mac loss,1022) (3B after TUF loss,0) (8B two machines,3330)};
+% Mac RPC
+\addplot+[fill=orange!65,draw=orange!80!black,bar shift=0pt]
+  coordinates {(3B three machines,968) (3B after Mac loss,0) (3B after TUF loss,0) (8B two machines,0)};
+\legend{CPU-mapped (ROG RAM), ROG CUDA0, TUF RPC0, Mac RPC0}
+\end{axis}
+\end{tikzpicture}
+\caption{Per-device model weights reported by \texttt{llama.cpp} after loading,
+for four measured configurations. The first two bars are the same request
+before and after the Mac accelerator was stopped: its \SI{968}{MiB} is
+redistributed onto the two surviving machines. The fourth bar is the 8B
+capacity run, where the remote Windows GPU holds \SI{3330}{MiB} of the
+\SI{4.9}{GB} model.}
+\label{fig:placement}
+\end{figure}
+
+Two observations follow from the figure. In the three-machine configuration the
+Mac received the largest remote share, \SI{968}{MiB}, even though HyperPod
+supplied no weights for it; that allocation was \texttt{llama.cpp}'s own
+decision under the documented fallback. And in the 8B run the remote Windows GPU
+holds \SI{3330}{MiB} against \SI{1073}{MiB} on the controller. That is
+\SI{71}{\percent} of all reported model weights, or \SI{76}{\percent} of the
+weights resident on a GPU, and it is what makes that model runnable at all on
+this hardware.
+
+\subsection{Latency and throughput}
+\label{sec:perf}
+
+Figure~\ref{fig:perf} gives all five runs for each configuration. We plot every
+run rather than only the medians, because the run-to-run spread is the most
+important feature of the distributed measurements.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+\begin{groupplot}[group style={group size=2 by 1,horizontal sep=1.45cm},
+  hpaxis,width=6.6cm,height=5.0cm,xmin=0.6,xmax=5.4,xtick={1,2,3,4,5},
+  xlabel={run},]
+
+\nextgroupplot[title={End-to-end latency},ylabel={seconds},ymin=0,ymax=17.5,
+  legend style={at={(1.28,1.40)},anchor=north,legend columns=3,draw=gray!45}]
+\addplot+[dottedC] coordinates {(1,1.566)(2,1.527)(3,1.623)(4,1.543)(5,1.505)};
+\addlegendentry{local baseline}
+\addplot+[dashedB] coordinates {(1,7.122)(2,15.025)(3,8.157)(4,13.807)(5,11.947)};
+\addlegendentry{native split}
+\addplot+[solidA] coordinates {(1,10.739)(2,10.920)(3,15.930)(4,11.804)(5,14.324)};
+\addlegendentry{HyperPod split}
+
+\nextgroupplot[title={Decode throughput},ylabel={tokens / second},ymin=0,ymax=85]
+\addplot+[dottedC] coordinates {(1,75.64)(2,75.68)(3,75.51)(4,75.54)(5,75.45)};
+\addplot+[dashedB] coordinates {(1,18.13)(2,9.17)(3,20.91)(4,9.94)(5,13.19)};
+\addplot+[solidA] coordinates {(1,15.30)(2,19.04)(3,9.12)(4,11.79)(5,9.94)};
+\end{groupplot}
+\end{tikzpicture}
+\caption{Five sequential requests per configuration against a warm model.
+The local baseline is tightly clustered, varying by \SI{0.12}{\second} and
+\SI{0.23}{tokens/second} across all five runs. Both distributed configurations
+vary by several seconds and by more than a factor of two in throughput, which
+we attribute to the Wi-Fi link rather than to the control plane.}
+\label{fig:perf}
+\end{figure}
+
+\begin{table}[htbp]
+\centering\small
+\caption{Medians and ranges over the five runs of Figure~\ref{fig:perf}.}
+\label{tab:perf}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Configuration} & \textbf{Median latency} & \textbf{Range} & \textbf{Median decode} & \textbf{Range} \\
+\midrule
+Local baseline  & \SI{1.543}{\second}  & 1.505--1.623 & \SI{75.54}{} & 75.45--75.68 \\
+Native split    & \SI{11.947}{\second} & 7.122--15.025 & \SI{13.19}{} & 9.17--20.91 \\
+HyperPod split  & \SI{11.804}{\second} & 10.739--15.930 & \SI{11.79}{} & 9.12--19.04 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The local baseline decoded at a median \SI{75.54}{tokens/second} against
+\SI{11.79}{} for the HyperPod split: distributing this model over this Wi-Fi
+network cost roughly a factor of six in throughput. That is the central cost of
+the approach and we do not present it as anything else.
+
+Between the two distributed configurations the median latencies differ by
+\SI{0.143}{\second}, which is far smaller than the spread within either
+configuration: \SI{5.2}{\second} for the HyperPod split and \SI{7.9}{\second}
+for the native split. With five runs we can state that the control plane
+introduced no latency penalty large enough to separate from link variance; we
+cannot make a stronger claim than that, and a larger sample would be needed to
+try.
+
+\subsection{Failure and recovery}
+\label{sec:recovery}
+
+Three failure experiments were run, all by stopping a real
+\code{ggml-rpc-server} process by hand during a live request.
+Figure~\ref{fig:timeline} shows them on a common time axis.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  lbl/.style={anchor=east,font=\tiny},
+  bar/.style={line width=8pt},
+  tick/.style={gray!60,line width=0.4pt},
+  outlbl/.style={font=\tiny,anchor=west}]
+
+\def\sx{0.135}   % seconds -> cm
+
+% legend
+\begin{scope}[shift={(0,2.95)}]
+  \foreach \i/\c/\t in {0/serA!45/generating, 1/serB!55/abort interval,
+                        2/orange!50/model reload, 3/green!45!black!55/retried request}{
+    \draw[bar,\c] (\i*2.55,0) -- (\i*2.55+0.38,0);
+    \node[font=\tiny,anchor=west] at (\i*2.55+0.46,0) {\t};
+  }
+\end{scope}
+
+% axis
+\draw[tick] (0,-0.5) -- (80*\sx,-0.5);
+\foreach \t in {0,10,20,30,40,50,60,70,80}{
+  \draw[tick] (\t*\sx,-0.5) -- (\t*\sx,-0.63) node[below,font=\tiny]{\t};
+}
+\node[font=\tiny] at (40*\sx,-1.1) {seconds after the request was submitted};
+
+% --- native llama.cpp ---
+\node[lbl] at (-0.12,2.1) {native \texttt{llama.cpp}};
+\draw[bar,serA!45] (0,2.1) -- (15*\sx,2.1);
+\draw[bar,serB!55] (15*\sx,2.1) -- (34.06*\sx,2.1);
+\draw[serB,line width=0.6pt] (34.06*\sx,1.92) -- (34.06*\sx,2.28);
+\node[outlbl,text=serB] at (34.9*\sx,2.1) {request failed, HTTP 000};
+
+% --- HyperPod, Mac loss ---
+\node[lbl] at (-0.12,1.3) {HyperPod, Mac stopped};
+\draw[bar,serA!45] (0,1.3) -- (21*\sx,1.3);
+\draw[bar,serB!55] (21*\sx,1.3) -- (22*\sx,1.3);
+\draw[bar,orange!50] (22*\sx,1.3) -- (54*\sx,1.3);
+\draw[bar,green!45!black!55] (54*\sx,1.3) -- (75.68*\sx,1.3);
+\draw[green!35!black,line width=0.6pt] (75.68*\sx,1.12) -- (75.68*\sx,1.48);
+\node[outlbl,text=green!35!black] at (76.5*\sx,1.3) {returned};
+
+% --- HyperPod, TUF loss ---
+\node[lbl] at (-0.12,0.5) {HyperPod, TUF stopped};
+\draw[bar,serA!45] (0,0.5) -- (4*\sx,0.5);
+\draw[bar,serB!55] (4*\sx,0.5) -- (6*\sx,0.5);
+\draw[bar,orange!50] (6*\sx,0.5) -- (7*\sx,0.5);
+\draw[bar,green!45!black!55] (7*\sx,0.5) -- (11.31*\sx,0.5);
+\draw[green!35!black,line width=0.6pt] (11.31*\sx,0.32) -- (11.31*\sx,0.68);
+\node[outlbl,text=green!35!black] at (12.1*\sx,0.5) {returned after \SI{11.31}{\second}};
+\end{tikzpicture}
+\caption{The three physical failure experiments. Blue is generation, red is the
+interval containing the abort, orange is model reload, green is the retried
+request. In the top run, unmodified \texttt{llama.cpp} never produced a
+response. In both HyperPod runs the original HTTP request completed without
+resubmission. Prompt lengths differed between runs, so the total durations are
+not comparable to each other; the comparison being made is outcome, not speed.
+The moment the operator stopped the native run's accelerator is known only to
+the nearest minute, so its red interval begins at an approximate offset; all
+other boundaries come from logged timestamps.}
+\label{fig:timeline}
+\end{figure}
+
+\paragraph{Native baseline.}
+A request was submitted against the two-machine split and the Windows
+accelerator was stopped roughly fifteen seconds later. The client received no
+response: \code{curl} exited 52 with HTTP~000 after \SI{34.06}{\second}. The
+model process had aborted and did not return.
+
+\paragraph{Three machines to two.}
+The 3B model was loaded across all three machines and a request capped at 420
+output tokens was submitted. The Mac's \code{ggml-rpc-server} was then stopped,
+while its Rust agent was deliberately left running. This separates two states
+that are easy to conflate: the agent continued to heartbeat normally, so agent
+health alone would have indicated a working node.
+
+The controller log records the sequence:
+
+\begin{quote}\small\ttfamily
+llama-server gen 1 exited: signal: aborted\\
+infer attempt 1 recognized node death and re-ran the same request\\
+pool skipping 192.168.1.13:50052 (worker heartbeat ok, but its rpc-server is unreachable)\\
+launched gen 2 over [192.168.1.5:50052]; scheduler=measured-free-vram weights=4763,3204\\
+pipeline ready (gen 2) after 33s
+\end{quote}
+
+The rebuilt pipeline was still distributed, now holding \SI{896}{MiB} on the
+controller GPU and \SI{1022}{MiB} on the Windows worker. The original request
+returned a 1{,}937-character response \SI{75.68}{\second} after submission.
+
+\paragraph{Two machines to one.}
+Repeating the experiment against the Windows worker produced the same outcome by
+a shorter path. Generation~1 aborted four seconds after submission, the
+unreachable endpoint was excluded, and because the 3B model fits in the
+controller's GPU alone the rebuild completed in about one second. The same
+request returned a 1{,}828-character response after \SI{11.31}{\second} in
+total.
+
+\subsection{Load times}
+\label{sec:load}
+
+Loading dominates the time cost of this design, and it varies with cache state
+and link quality rather than with anything HyperPod controls.
+Figure~\ref{fig:load} collects the measured loads.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+\begin{axis}[hpaxis,
+  width=12.2cm,height=4.4cm,
+  xbar, bar width=11pt,
+  xmin=0,xmax=1080,
+  xlabel={seconds to a ready model},
+  symbolic y coords={{3B rebuild, local only},{3B rebuild, 2 machines},{3B cached, 3 machines},{3B cached, 2 machines},{8B first load, 2 machines},{3B first load, 2 machines}},
+  ytick=data,
+  y tick label style={font=\tiny},
+  nodes near coords,
+  nodes near coords style={font=\tiny,anchor=west,xshift=1pt},
+  enlarge y limits=0.12,
+  point meta=explicit symbolic,
+  ]
+\addplot+[fill=serA!55,draw=serA] coordinates {
+  (1,{3B rebuild, local only})      [1 s]
+  (33,{3B rebuild, 2 machines})     [33 s]
+  (48,{3B cached, 3 machines})      [48 s]
+  (240,{3B cached, 2 machines})     [240 s]
+  (730,{8B first load, 2 machines}) [730 s]
+  (990,{3B first load, 2 machines}) [{\textasciitilde}990 s]
+};
+\end{axis}
+\end{tikzpicture}
+\caption{Measured time to a ready model. Each bar is a single observation, not
+an average. The two first-load bars include transferring the remote worker's
+share of the weights over Wi-Fi on a weak link (\SI{-66}{dBm} to
+\SI{-68}{dBm}); once the worker's local tensor cache is populated, the same 3B
+model reloads in a small fraction of that time. The cached three-machine load
+was measured on the stronger \SI{-56}{dBm} link.}
+\label{fig:load}
+\end{figure}
+
+The practical consequence is that the first load of a new model on a new worker
+is slow and should be done before any demonstration, while subsequent loads and
+all recoveries are short. Reported cached 3B loads across sessions were
+\SI{240}{\second}, \SI{137}{\second}, \SI{60}{\second} and \SI{48}{\second},
+decreasing as link conditions improved; we report the range rather than
+selecting the most favourable figure.

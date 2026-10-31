@@ -1,0 +1,67 @@
+% =====================================================================
+%  main.tex — HyperPod technical report (compile this file)
+%  Build: tectonic main.tex
+%
+%  Every number in this report comes from a committed log in the
+%  repository under test/, or from a command transcript recorded during
+%  the run it describes. Nothing is estimated or projected.
+% =====================================================================
+\documentclass[11pt]{article}
+\input{preamble}
+
+\title{\vspace{-2em}\textbf{HyperPod}\\[0.35em]
+\large Measured Placement and Failure Recovery for Meta Llama Models\\
+on a Pool of Consumer Laptops\\[0.45em]
+\normalsize Technical Report}
+\author{\normalsize Dharshaneshwaran\\
+\normalsize\textit{Meta Global AI Developer Hackathon --- Indie Developer Track}}
+\date{\normalsize 31 October 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\begin{abstract}
+\noindent
+A student or independent developer may own several modest laptops and still have
+no single GPU large enough for the local model they want to run. \texttt{llama.cpp}
+can already expose a remote accelerator over its RPC backend, so the memory of
+several machines can be combined. That backend is documented upstream as a
+proof of concept: when one RPC peer disappears, the process that was using it
+aborts. Consumer laptops disappear often, which makes the combined pool
+difficult to depend on.
+
+This report documents HyperPod, a control plane around \texttt{llama.cpp} that
+discovers laptops on a local network, records the hardware each one actually
+reports, derives tensor weights from measured free video memory, supervises the
+model process, and rebuilds the pipeline when a worker stops answering. It
+reports what we measured on three physical machines: a Linux laptop with an
+RTX~3050 acting as controller, a Windows laptop with an RTX~4050, and an M4
+MacBook~Air running Metal, all on one Wi-Fi network.
+
+Three results are quantified. First, a Llama~3.2~3B model was loaded across all
+three machines, and the per-device byte counts reported by \texttt{llama.cpp}
+are given. Second, the Mac accelerator was stopped during a request: the
+underlying process aborted, HyperPod excluded that endpoint, rebuilt across the
+two surviving laptops in \SI{33}{\second}, and the same HTTP request returned.
+Under identical conditions, unmodified \texttt{llama.cpp} failed the request and
+did not restart. Third, splitting over Wi-Fi was substantially slower than the
+single local GPU, at a median of \SI{11.8}{\second} against
+\SI{1.54}{\second} per request. HyperPod is therefore a capacity and recovery
+mechanism, not an accelerator, and this report states that plainly.
+\end{abstract}
+
+\tableofcontents
+\clearpage
+
+\input{sections/01-introduction}
+\input{sections/02-background}
+\input{sections/03-design}
+\input{sections/04-implementation}
+\input{sections/05-setup}
+\input{sections/06-results}
+\input{sections/07-limitations}
+\input{sections/08-related}
+\input{sections/09-conclusion}
+
+\end{document}
