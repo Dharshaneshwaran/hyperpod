@@ -18,6 +18,7 @@ import {
   IconServer,
   IconX,
 } from "@tabler/icons-react";
+import { settle } from "@lucasmarkes/hairline";
 import { CONTROLLER, fetchPipeline, fetchStatus, infer, type Pipeline, type Worker } from "./api";
 import "./App.css";
 
@@ -71,6 +72,7 @@ export default function App() {
   const [joined, setJoined] = useState<Set<string>>(new Set());
   const seen = useRef<Set<string>>(new Set());
   const searchRef = useRef<HTMLInputElement>(null);
+  const waitingRef = useRef<HTMLDivElement | null>(null);
 
   // playground
   const [prompt, setPrompt] = useState("In one sentence, what is teamwork?");
@@ -81,6 +83,16 @@ export default function App() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // The waiting figure exists only while the cluster is empty; mount it on the
+  // placeholder and destroy it as soon as a node arrives.
+  const clusterEmpty = workers.length === 0;
+  useEffect(() => {
+    const el = waitingRef.current;
+    if (!el) return;
+    const fig = settle(el, { intensity: 0.7, label: "Scattered laptops assembling into a cluster" });
+    return () => fig.destroy();
+  }, [clusterEmpty, page]);
 
   const refresh = useCallback(async () => {
     try {
@@ -316,8 +328,20 @@ export default function App() {
                   <h2>Topology</h2>
                   <span className="muted">Controller at center · nodes join automatically</span>
                 </div>
-                <svg className="topo" viewBox={`0 0 ${V} ${V}`} role="img" aria-label="Cluster topology">
-                  {pos.map((p, i) => (
+                {clusterEmpty ? (
+                  <div className="waiting">
+                    <div
+                      ref={waitingRef}
+                      className="waiting-fig"
+                      aria-label="Scattered laptops assembling into a cluster"
+                    />
+                    <p className="empty">
+                      Waiting for laptops on this Wi-Fi. Start a worker and it appears here.
+                    </p>
+                  </div>
+                ) : (
+                  <svg className="topo" viewBox={`0 0 ${V} ${V}`} role="img" aria-label="Cluster topology">
+                    {pos.map((p, i) => (
                     <line
                       key={`l${remote[i].worker_id}`}
                       x1={C}
@@ -345,11 +369,9 @@ export default function App() {
                         <text y={52} className="tn-id">{w.worker_id.replace("worker-", "")}</text>
                         <text y={70} className="tn-s">{w.healthy ? w.gpu : "DOWN"}</text>
                       </g>
-                    );
-                  })}
-                </svg>
-                {workers.length === 0 && (
-                  <p className="empty">Waiting for laptops on this Wi-Fi. Start a worker and it appears here.</p>
+                      );
+                    })}
+                  </svg>
                 )}
               </section>
 

@@ -500,3 +500,20 @@ textarea:focus { border-color: var(--primary); }
     r: 45;
   }
 }
+
+/* ---------- waiting state figure ---------- */
+.waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+/* The figure fills its parent at a 5:4 ratio, so the width sets the height. */
+.waiting-fig {
+  width: 100%;
+  max-width: 300px;
+  color: var(--muted);
+}
+.waiting .empty { margin-top: 0; }
+
+/* The figure reads currentColor, so reduced motion only needs the library's own guard. */
