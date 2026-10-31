@@ -316,46 +316,38 @@ export default function App() {
                   <h2>Topology</h2>
                   <span className="muted">Controller at center · nodes join automatically</span>
                 </div>
-                <div className="topo-wrapper">
-                  {joined.size > 0 && (
-                    <>
-                      <div className="connecting-ring"></div>
-                      <div className="connecting-label">Connecting…</div>
-                    </>
-                  )}
-                  <svg className="topo" viewBox={`0 0 ${V} ${V}`} role="img" aria-label="Cluster topology">
-                    {pos.map((p, i) => (
-                      <line
-                        key={`l${remote[i].worker_id}`}
-                        x1={C}
-                        y1={C}
-                        x2={p.x}
-                        y2={p.y}
-                        className={`link ${remote[i].healthy ? "link-ok" : "link-down"}`}
-                      />
-                    ))}
-                    <g className="hub">
-                      <circle cx={C} cy={C} r={42} />
-                      <text x={C} y={C - 3} className="hub-t">Controller</text>
-                      <text x={C} y={C + 13} className="hub-s">{localNode ? `this laptop · ${localNode.gpu}` : "this laptop"}</text>
-                    </g>
-                    {pos.map((p, i) => {
-                      const w = remote[i];
-                      return (
-                        <g
-                          key={`n${w.worker_id}`}
-                          transform={`translate(${p.x} ${p.y})`}
-                          className={`tnode ${w.healthy ? "tn-ok" : "tn-down"} ${joined.has(w.worker_id) ? "tn-join" : ""}`}
-                          onClick={() => setSelected(w)}
-                        >
-                          <circle r={32} />
-                          <text y={52} className="tn-id">{w.worker_id.replace("worker-", "")}</text>
-                          <text y={70} className="tn-s">{w.healthy ? w.gpu : "DOWN"}</text>
-                        </g>
-                      );
-                    })}
-                  </svg>
-                </div>
+                <svg className="topo" viewBox={`0 0 ${V} ${V}`} role="img" aria-label="Cluster topology">
+                  {pos.map((p, i) => (
+                    <line
+                      key={`l${remote[i].worker_id}`}
+                      x1={C}
+                      y1={C}
+                      x2={p.x}
+                      y2={p.y}
+                      className={`link ${remote[i].healthy ? "link-ok" : "link-down"}`}
+                    />
+                  ))}
+                  <g className="hub">
+                    <circle cx={C} cy={C} r={42} />
+                    <text x={C} y={C - 3} className="hub-t">Controller</text>
+                    <text x={C} y={C + 13} className="hub-s">{localNode ? `this laptop · ${localNode.gpu}` : "this laptop"}</text>
+                  </g>
+                  {pos.map((p, i) => {
+                    const w = remote[i];
+                    return (
+                      <g
+                        key={`n${w.worker_id}`}
+                        transform={`translate(${p.x} ${p.y})`}
+                        className={`tnode ${w.healthy ? "tn-ok" : "tn-down"} ${joined.has(w.worker_id) ? "tn-join" : ""}`}
+                        onClick={() => setSelected(w)}
+                      >
+                        <circle r={32} />
+                        <text y={52} className="tn-id">{w.worker_id.replace("worker-", "")}</text>
+                        <text y={70} className="tn-s">{w.healthy ? w.gpu : "DOWN"}</text>
+                      </g>
+                    );
+                  })}
+                </svg>
                 {workers.length === 0 && (
                   <p className="empty">Waiting for laptops on this Wi-Fi. Start a worker and it appears here.</p>
                 )}

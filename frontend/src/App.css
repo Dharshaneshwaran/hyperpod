@@ -419,51 +419,84 @@ textarea:focus { border-color: var(--primary); }
 }
 
 
-/* ---------- connecting animation ---------- */
-.topo-wrapper {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  width: 100%;
+/* ---------- worker connection animations ---------- */
+.tnode {
+  transition: all 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.connecting-ring {
-  position: absolute;
-  width: 60px;
-  height: 60px;
-  border: 2.5px solid var(--primary);
-  border-radius: var(--radius-full);
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  animation: pulse-ring 1.5s ease-in-out infinite;
+/* Joining state: smooth scale and glow */
+.tn-join {
+  animation: worker-join 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-@keyframes pulse-ring {
+@keyframes worker-join {
   0% {
-    transform: translateX(-50%) scale(0.7);
-    opacity: 1;
-    border-color: var(--primary);
+    opacity: 0;
+    scale: 0.3;
   }
-  50% {
-    transform: translateX(-50%) scale(1.15);
-    opacity: 0.5;
-    border-color: var(--primary);
+  60% {
+    scale: 1.25;
   }
   100% {
-    transform: translateX(-50%) scale(0.7);
     opacity: 1;
+    scale: 1;
   }
 }
 
-.connecting-label {
-  position: absolute;
-  top: -25px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--primary);
-  text-align: center;
-  white-space: nowrap;
+/* Healthy state: subtle pulse and glow */
+.tn-ok {
+  animation: worker-healthy 3s ease-in-out infinite;
+}
+
+.tn-ok circle {
+  filter: drop-shadow(0 0 6px oklch(0.55 0.17 155 / 0.4));
+}
+
+@keyframes worker-healthy {
+  0%, 100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.08;
+  }
+}
+
+/* Down state: no animation */
+.tn-down {
+  opacity: 0.6;
+}
+
+.tn-down circle {
+  filter: drop-shadow(0 0 3px oklch(0.55 0.22 25 / 0.3));
+}
+
+/* Link animations */
+.link-ok {
+  animation: link-pulse 2s ease-in-out infinite;
+}
+
+@keyframes link-pulse {
+  0%, 100% {
+    opacity: 0.35;
+    stroke-width: 1.5;
+  }
+  50% {
+    opacity: 0.6;
+    stroke-width: 2;
+  }
+}
+
+/* Hub breathing effect */
+.hub circle {
+  animation: hub-breathe 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px oklch(0.45 0.2 258 / 0.3));
+}
+
+@keyframes hub-breathe {
+  0%, 100% {
+    r: 42;
+  }
+  50% {
+    r: 45;
+  }
 }
