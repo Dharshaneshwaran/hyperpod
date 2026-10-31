@@ -216,125 +216,28 @@ kbd {
 .card-head h2 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.02em; }
 .empty { text-align: center; color: var(--muted); margin: 0 0 8px; }
 
-/* ---------- topology 3D isometric ---------- */
-.topo-container {
-  perspective: 1000px;
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  min-height: 360px;
+/* ---------- topology ---------- */
+.topo { display: block; width: 100%; max-width: 460px; margin: 0 auto; }
+.link { stroke-width: 1.5; }
+.link-ok { stroke: oklch(0.45 0.2 258 / 0.35); }
+.link-down { stroke: oklch(0.55 0.22 25 / 0.4); stroke-dasharray: 4 5; }
+.hub circle { fill: var(--primary); }
+.hub-t { fill: var(--card); font-size: 12px; font-weight: 650; text-anchor: middle; }
+.hub-s { fill: oklch(0.993 0.002 260 / 0.75); font-size: 9.5px; text-anchor: middle; }
+.tnode { cursor: pointer; transition: opacity var(--duration-slow) var(--ease-out); }
+.tnode circle {
+  fill: var(--card); stroke-width: 2;
+  transition: stroke var(--duration-base) var(--ease-out);
 }
-
-.topo {
-  display: block;
-  width: 100%;
-  max-width: 460px;
-  transform-style: preserve-3d;
-  transition: transform 100ms ease-out;
-}
-
-/* Default isometric angle */
-.topo {
-  transform: rotateX(15deg) rotateZ(25deg);
-}
-
-/* Respond to pointer movement for interactive tilt */
-@supports (pointer-events: auto) {
-  .topo-container:hover .topo {
-    transform: rotateX(20deg) rotateZ(30deg);
-  }
-}
-
-/* ---------- worker connection animations ---------- */
-.tnode {
-  transition: all 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  transform-style: preserve-3d;
-}
-
-/* Joining state: smooth scale and glow */
-.tn-join {
-  animation: worker-join 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes worker-join {
-  0% {
-    opacity: 0;
-    scale: 0.3;
-    transform: translateZ(-40px);
-  }
-  60% {
-    scale: 1.25;
-    transform: translateZ(20px);
-  }
-  100% {
-    opacity: 1;
-    scale: 1;
-    transform: translateZ(0);
-  }
-}
-
-/* Healthy state: subtle pulse and glow */
-.tn-ok {
-  animation: worker-healthy 3s ease-in-out infinite;
-}
-
-.tn-ok circle {
-  filter: drop-shadow(0 0 8px oklch(0.55 0.17 155 / 0.5)) drop-shadow(0 2px 4px oklch(0 0 0 / 0.1));
-}
-
-@keyframes worker-healthy {
-  0%, 100% {
-    scale: 1;
-    filter: drop-shadow(0 0 8px oklch(0.55 0.17 155 / 0.5)) drop-shadow(0 2px 4px oklch(0 0 0 / 0.1));
-  }
-  50% {
-    scale: 1.08;
-    filter: drop-shadow(0 0 12px oklch(0.55 0.17 155 / 0.7)) drop-shadow(0 3px 6px oklch(0 0 0 / 0.15));
-  }
-}
-
-/* Down state: no animation */
-.tn-down {
-  opacity: 0.6;
-}
-
-.tn-down circle {
-  filter: drop-shadow(0 0 4px oklch(0.55 0.22 25 / 0.3)) drop-shadow(0 1px 2px oklch(0 0 0 / 0.1));
-}
-
-/* Link animations */
-.link-ok {
-  animation: link-pulse 2s ease-in-out infinite;
-  filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.05));
-}
-
-@keyframes link-pulse {
-  0%, 100% {
-    opacity: 0.35;
-    stroke-width: 1.5;
-  }
-  50% {
-    opacity: 0.6;
-    stroke-width: 2.2;
-  }
-}
-
-/* Hub breathing effect with 3D depth */
-.hub circle {
-  animation: hub-breathe 3s ease-in-out infinite;
-  filter: drop-shadow(0 0 6px oklch(0.45 0.2 258 / 0.4)) drop-shadow(0 3px 8px oklch(0 0 0 / 0.12));
-}
-
-@keyframes hub-breathe {
-  0%, 100% {
-    r: 42;
-    filter: drop-shadow(0 0 6px oklch(0.45 0.2 258 / 0.4)) drop-shadow(0 3px 8px oklch(0 0 0 / 0.12));
-  }
-  50% {
-    r: 46;
-    filter: drop-shadow(0 0 10px oklch(0.45 0.2 258 / 0.6)) drop-shadow(0 4px 10px oklch(0 0 0 / 0.15));
-  }
-}
+.tn-ok circle { stroke: var(--success); }
+.tn-down circle { stroke: var(--destructive); stroke-dasharray: 5 4; }
+.tn-down { opacity: 0.7; }
+.tn-id { font-size: 12px; font-weight: 650; text-anchor: middle; fill: var(--foreground); }
+.tn-s { font-size: 9.5px; text-anchor: middle; fill: var(--muted); }
+.tn-down .tn-s { fill: var(--destructive); font-weight: 650; }
+.tnode:hover circle { stroke-width: 3; }
+.tn-join { animation: join var(--duration-slow) var(--ease-spring); transform-box: fill-box; transform-origin: center; }
+@keyframes join { from { opacity: 0; scale: 0.6; } to { opacity: 1; scale: 1; } }
 
 /* ---------- tabs ---------- */
 .tabs-row { border-bottom: 1px solid var(--border); margin-bottom: var(--spacing-element); }
