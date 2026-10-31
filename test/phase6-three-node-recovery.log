@@ -53,3 +53,14 @@ Conclusion:
   Mac RPC loss; true 3-node → 2-node distributed rebuild; and automatic retry
   of the same in-flight request. This is restart-and-retry recovery, not
   token/KV-cache continuation.
+
+Addendum (added 31 Oct 2026, from the same run's console transcript):
+  The timestamps below were printed by the test harness during this run but
+  were omitted from the original write-up above. They are recorded here because
+  the report's recovery timeline figure uses the request-start offset.
+    23:14:41  request submitted (harness: "Sending one long request")
+    23:15:02  generation 1 aborted  -> 21 s after submission
+    23:15:35  generation 2 ready    -> 33 s reload, 54 s after submission
+    elapsed   75.68 s total, as already recorded above
+  No measured value above was changed; only the start timestamp was added.
+
