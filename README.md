@@ -35,7 +35,7 @@ Per-device weights reported by llama.cpp after loading, for four measured
 configurations. The first two bars are the same request before and after the Mac
 accelerator was stopped.
 
-![Per-device model weights across four configurations](docs/assets/hyperpod-placement.svg)
+![Per-device model weights across four configurations](docs/assets/hyperpod-placement.png)
 
 ### Latency and throughput
 
@@ -43,7 +43,7 @@ Five sequential requests per configuration against a warm model. The local
 baseline is tightly clustered; both distributed configurations vary by several
 seconds, which we attribute to the Wi-Fi link rather than the control plane.
 
-![Five-run latency and decode throughput](docs/assets/hyperpod-benchmarks.svg)
+![Five-run latency and decode throughput](docs/assets/hyperpod-benchmarks.png)
 
 Distributing this model over this network cost roughly a factor of six in decode
 throughput. HyperPod buys capacity and recovery, not speed.
@@ -54,14 +54,14 @@ Each was produced by stopping a real `ggml-rpc-server` by hand during a live
 request. Native llama.cpp never returned a response; both HyperPod runs returned
 the original request without resubmission.
 
-![Timeline of the three failure experiments](docs/assets/hyperpod-recovery-timeline.svg)
+![Timeline of the three failure experiments](docs/assets/hyperpod-recovery-timeline.png)
 
 Prompt lengths differed between runs, so the totals are not comparable to each
 other. The comparison is outcome, not speed.
 
 ### Time to a ready model
 
-![Measured time to a ready model](docs/assets/hyperpod-load-times.svg)
+![Measured time to a ready model](docs/assets/hyperpod-load-times.png)
 
 Each bar is a single observation. The first-load bars include transferring the
 remote worker's share of the weights over Wi-Fi; once a worker's local tensor
