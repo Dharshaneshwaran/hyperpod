@@ -114,7 +114,7 @@ The playground reports which devices served each answer:
 
 ## Architecture
 
-![HyperPod architecture and recovery flow](docs/assets/hyperpod-architecture.svg)
+![HyperPod architecture and recovery flow](docs/assets/hyperpod-architecture.png)
 
 Detailed control flow, telemetry sources, recovery sequence and trust boundaries:
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
