@@ -50,6 +50,12 @@ struct DiscoveryAnnounce {
     worker_id: String,
     address: String,  // http base, e.g. http://192.168.1.38:9100
     rpc_addr: String, // host:port of this worker's ggml-rpc-server
+    /// The port alone, which this worker knows for certain because it is the
+    /// one it was configured with. The host in rpc_addr can be wrong on a
+    /// multi-homed machine; the port cannot. Sending it separately lets the
+    /// controller pair its own observation of our address with our port,
+    /// instead of assuming a default.
+    rpc_port: String,
     gpu: String,
     os: String,
     telemetry: telemetry::Telemetry,
@@ -75,6 +81,7 @@ struct Config {
     bind: String,
     advertise: String,
     rpc_advertise: String,
+    rpc_port: String,
     controller: String,
     llama_cli: String,
     model: String,
@@ -130,6 +137,7 @@ fn load_config() -> Result<Config, String> {
         bind: env_or("HYPERPOD_WORKER_BIND", "0.0.0.0:9100"),
         advertise,
         rpc_advertise,
+        rpc_port,
         controller,
         llama_cli,
         model,
@@ -138,6 +146,31 @@ fn load_config() -> Result<Config, String> {
 }
 
 type SharedTelemetry = Arc<std::sync::RwLock<telemetry::Telemetry>>;
+
+/// The controller's base URL, which the discovery reply can correct at runtime.
+///
+/// The address was previously fixed at startup, so moving the controller
+/// between networks, or between Wi-Fi and Ethernet, meant editing a launcher on
+/// every worker. A stale value surfaces as a connection timeout, which says
+/// nothing about the cause.
+type SharedController = Arc<std::sync::RwLock<String>>;
+
+/// The controller address to use right now: the discovered one if we have it,
+/// otherwise whatever was configured at startup.
+fn current_controller(cfg: &Config, controller: &SharedController) -> String {
+    match controller.read() {
+        Ok(found) if !found.is_empty() => found.clone(),
+        _ => cfg.controller.clone(),
+    }
+}
+
+/// What the controller sends back when it hears our broadcast.
+#[derive(Deserialize)]
+struct ControllerHello {
+    #[serde(rename = "type")]
+    kind: String,
+    controller: String,
+}
 
 /// Start one sampler shared by registration, heartbeats, and discovery. This
 /// avoids launching duplicate nvidia-smi/PowerShell collectors on Windows.
@@ -174,8 +207,11 @@ fn detect_os() -> String {
 }
 
 /// Register with the controller (retries until it succeeds).
-fn register(cfg: &Config, shared: &SharedTelemetry) {
+fn register(cfg: &Config, shared: &SharedTelemetry, controller: &SharedController) {
     loop {
+        // Read the address each attempt: discovery may have corrected it while
+        // we were failing against a stale one.
+        let base = current_controller(cfg, controller);
         let telemetry = telemetry_snapshot(shared);
         let req = RegisterReq {
             worker_id: cfg.worker_id.clone(),
@@ -185,9 +221,9 @@ fn register(cfg: &Config, shared: &SharedTelemetry) {
             os: detect_os(),
             telemetry,
         };
-        match ureq::post(&format!("{}/register", cfg.controller)).send_json(&req) {
+        match ureq::post(&format!("{base}/register")).send_json(&req) {
             Ok(_) => {
-                println!("[worker] registered with controller at {}", cfg.controller);
+                println!("[worker] registered with controller at {base}");
                 return;
             }
             Err(e) => {
@@ -199,17 +235,18 @@ fn register(cfg: &Config, shared: &SharedTelemetry) {
 }
 
 /// Background heartbeat loop.
-fn start_heartbeat(cfg: Config, shared: SharedTelemetry) {
+fn start_heartbeat(cfg: Config, shared: SharedTelemetry, controller: SharedController) {
     thread::spawn(move || loop {
+        let base = current_controller(&cfg, &controller);
         let req = HeartbeatReq {
             worker_id: cfg.worker_id.clone(),
             telemetry: telemetry_snapshot(&shared),
         };
-        match ureq::post(&format!("{}/heartbeat", cfg.controller)).send_json(&req) {
+        match ureq::post(&format!("{base}/heartbeat")).send_json(&req) {
             Ok(_) => {}
             Err(e) => {
                 eprintln!("[worker] heartbeat failed ({e}); re-registering");
-                register(&cfg, &shared);
+                register(&cfg, &shared, &controller);
             }
         }
         thread::sleep(Duration::from_secs(3));
@@ -218,7 +255,7 @@ fn start_heartbeat(cfg: Config, shared: SharedTelemetry) {
 
 /// LAN auto-discovery: periodically UDP-broadcast this worker's presence so the
 /// controller can auto-register it without any manual IP configuration.
-fn start_discovery_broadcast(cfg: Config, shared: SharedTelemetry) {
+fn start_discovery_broadcast(cfg: Config, shared: SharedTelemetry, controller: SharedController) {
     const DISCOVERY_PORT: u16 = 50999;
     thread::spawn(move || {
         let socket = match std::net::UdpSocket::bind("0.0.0.0:0") {
@@ -232,6 +269,8 @@ fn start_discovery_broadcast(cfg: Config, shared: SharedTelemetry) {
             eprintln!("[worker] discovery: set_broadcast failed: {e}");
             return;
         }
+        // A short timeout so a missing reply costs one tick, not the loop.
+        let _ = socket.set_read_timeout(Some(Duration::from_millis(400)));
         let target = format!("255.255.255.255:{DISCOVERY_PORT}");
         println!("[worker] discovery: broadcasting presence to {target} every 3s");
         loop {
@@ -241,6 +280,7 @@ fn start_discovery_broadcast(cfg: Config, shared: SharedTelemetry) {
                 worker_id: cfg.worker_id.clone(),
                 address: cfg.advertise.clone(),
                 rpc_addr: cfg.rpc_advertise.clone(),
+                rpc_port: cfg.rpc_port.clone(),
                 gpu: measured_gpu_name(&telemetry),
                 os: detect_os(),
                 telemetry,
@@ -253,6 +293,29 @@ fn start_discovery_broadcast(cfg: Config, shared: SharedTelemetry) {
                 }
                 Err(e) => eprintln!("[worker] discovery: serialize failed: {e}"),
             }
+            // The controller answers with the address our packet arrived on,
+            // which is an address that demonstrably reaches it from here.
+            let mut buf = [0u8; 1024];
+            if let Ok((n, _)) = socket.recv_from(&mut buf) {
+                if let Ok(hello) = serde_json::from_slice::<ControllerHello>(&buf[..n]) {
+                    if hello.kind == "hyperpod-controller" && !hello.controller.is_empty() {
+                        let changed = match controller.read() {
+                            Ok(current) => *current != hello.controller,
+                            Err(_) => false,
+                        };
+                        if changed {
+                            if let Ok(mut current) = controller.write() {
+                                println!(
+                                    "[worker] controller moved: now using {} (was {})",
+                                    hello.controller, *current
+                                );
+                                *current = hello.controller;
+                            }
+                        }
+                    }
+                }
+            }
+
             thread::sleep(Duration::from_secs(3));
         }
     });
@@ -371,9 +434,13 @@ fn main() {
     );
 
     // Register, then start heartbeats and LAN discovery with the same measured snapshot.
-    register(&cfg, &telemetry);
-    start_heartbeat(cfg.clone(), Arc::clone(&telemetry));
-    start_discovery_broadcast(cfg.clone(), Arc::clone(&telemetry));
+    // Starts empty: the configured address is used until discovery corrects it.
+    let controller: SharedController = Arc::new(std::sync::RwLock::new(String::new()));
+    // Broadcast first, so a reply can arrive before registration is attempted
+    // against a possibly stale configured address.
+    start_discovery_broadcast(cfg.clone(), Arc::clone(&telemetry), Arc::clone(&controller));
+    register(&cfg, &telemetry, &controller);
+    start_heartbeat(cfg.clone(), Arc::clone(&telemetry), Arc::clone(&controller));
 
     // Serve /run.
     let server = tiny_http::Server::http(&cfg.bind)

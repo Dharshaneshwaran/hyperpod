@@ -13,6 +13,8 @@ set -e
 
 # ---------------- CONFIG (edit if needed) ----------------
 BASE="${HYPERPOD_BASE:-/mnt/newvolume/meta/hyperpod}"
+# Discovery corrects this: the controller replies to our broadcast with its
+# own address, so this only has to be good enough for the first attempt.
 CONTROLLER_IP="${CONTROLLER_IP:-127.0.0.1}"
 RPC_PORT="${RPC_PORT:-50052}"
 WORKER_ID="${WORKER_ID:-worker-$(hostname)}"

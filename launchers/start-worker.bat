@@ -10,8 +10,10 @@ REM  Edit the CONFIG block below to match this laptop, then just double-click.
 REM ==========================================================================
 
 REM ---------------- CONFIG (edit these once) ----------------
-REM Set this to the controller's address on your network.
-set "CONTROLLER_IP=192.168.1.34"
+REM Only a starting point. The controller answers this worker's broadcast with
+REM its own address, so a wrong value here corrects itself within a few seconds
+REM and does not need editing when the controller changes network.
+set "CONTROLLER_IP=192.168.1.20"
 set "RPC_PORT=50052"
 set "WORKER_ID=worker-%COMPUTERNAME%"
 set "LLAMA_DIR=C:\llama-cuda"
