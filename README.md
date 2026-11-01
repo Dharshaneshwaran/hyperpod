@@ -48,6 +48,20 @@ seconds, which we attribute to the Wi-Fi link rather than the control plane.
 Distributing this model over this network cost roughly a factor of six in decode
 throughput. HyperPod buys capacity and recovery, not speed.
 
+### A third machine makes it slower, not faster
+
+![Median decode rate against pool size](docs/assets/hyperpod-scaling.png)
+
+Measured on a later all-NVIDIA pool, where every device reported free VRAM so
+HyperPod's own scheduler ran: 3B local **75.61 tok/s**, two machines
+**11.79**, three machines **3.62**. A layer split is a pipeline, so each device
+added puts another network hop on every token and the devices take turns rather
+than working at once. Pooling machines aggregates memory, not compute.
+
+The 8.54 GB Q8_0 ran at **5.64 tok/s** on those same three machines — faster
+than the 3B, which we measured but cannot explain. Full numbers in
+[`test/phase8-three-machine-benchmark.log`](test/phase8-three-machine-benchmark.log).
+
 ### The three physical failure experiments
 
 Each was produced by stopping a real `ggml-rpc-server` by hand during a live

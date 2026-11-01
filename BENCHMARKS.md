@@ -187,3 +187,66 @@ memory after losing the TUF.
   throughput, are compared.
 - No energy-per-token result is claimed; telemetry is displayed but not yet
   integrated over a request.
+
+---
+
+## Three-machine pool, 2 Nov 2026
+
+A later run on a different pool: the M4 Mac was down and a second Windows
+RTX 4050 laptop joined, so **every device reported free VRAM** and HyperPod's
+own `measured-free-vram` scheduler ran instead of falling back to
+`llama.cpp-auto`.
+
+Machines: ROG RTX 3050 controller, KAMALESH RTX 4050, LAPTOP-J2ULDUCA RTX 4050.
+Wi-Fi `Krish_5g` 5 GHz at −49 to −54 dBm. llama.cpp `0.7.0-dev` (commit
+`caa8191`). Same method as above: one fixed prompt, 128 output tokens, five
+sequential requests against a warm model.
+
+| Configuration | Median latency | Median decode | Range |
+|---|---:|---:|---|
+| 3B, one machine | 1.559 s | **75.61 tok/s** | 75.47–75.83 |
+| 3B, three machines | 34.300 s | **3.62 tok/s** | 1.63–3.70 |
+| 8B Q8_0 (8.54 GB), three machines | 22.656 s | **5.64 tok/s** | 5.10–6.16 |
+
+![Median decode rate against pool size](docs/assets/hyperpod-scaling.png)
+
+**A third machine made it slower, by 3.3×.** The two-machine 3B split above ran
+at 11.79 tok/s; three machines gives 3.62. Local is now 20.9× faster than the
+distributed path rather than 6×. A layer split is a pipeline: devices compute in
+sequence with a network transfer between stages, so each device added puts
+another hop on every token. Pooling machines aggregates memory, not compute.
+
+**The 8B ran faster than the 3B on the same three machines** (5.64 against
+3.62 tok/s). We cannot explain this. Both place weights on the same four
+buffers and so cross the same number of hops per token. Reported because it is
+measured, with no mechanism claimed.
+
+One three-machine 3B run took 73.8 s — 613 ms per token against roughly 275 for
+the other four, at the same token count. Cause not isolated. It is kept in the
+range rather than discarded, because a request more than doubling is itself a
+statement about stability.
+
+Full log: [`test/phase8-three-machine-benchmark.log`](test/phase8-three-machine-benchmark.log)
+
+### Recovery on this pool
+
+Three machines to two, with HyperPod scheduling both the initial load and the
+rebuild:
+
+```text
+llama-server (gen 3) exited: signal: aborted (core dumped)
+pool: skipping 192.168.1.29:50052
+   (worker heartbeat ok, but its rpc-server is unreachable)
+launched llama-server (gen 4) over [192.168.1.5:50052];
+   scheduler=measured-free-vram weights=5155,3584 reserve=512MiB;
+   reclaimed from previous gen: local 950 MiB
+     + 192.168.1.29:50052 514 MiB + 192.168.1.5:50052 454 MiB
+pipeline ready (gen 4) after 27s
+```
+
+The original request returned 5,731 characters after 177.49 s without being
+resubmitted. The machine whose accelerator was killed stayed **healthy and
+heartbeating 1.4 s later** — a live laptop with a dead accelerator, which is
+the condition the exclusion message names.
+
+Full log: [`test/phase9-allnvidia-recovery.log`](test/phase9-allnvidia-recovery.log)
