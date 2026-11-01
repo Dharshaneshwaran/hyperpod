@@ -683,3 +683,11 @@ func (s *supervisor) setModelPath(path string) {
 	s.tensorSplit = ""
 	s.splitWeightsMiB = nil
 }
+
+// currentPlacement returns the loaded generation's per-device placement, as
+// parsed from llama.cpp's own load output. Empty when nothing is loaded.
+func (s *supervisor) currentPlacement() []devicePlacement {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]devicePlacement(nil), s.placement...)
+}

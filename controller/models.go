@@ -60,16 +60,31 @@ type modelsResp struct {
 	Contributors []string `json:"contributors"`
 	Unmeasured   []string `json:"unmeasured"`
 	ReserveMiB   uint64   `json:"reserve_mib"`
-	Error        string   `json:"error,omitempty"`
+	// ReclaimedMiB is video memory counted because the loaded model is about to
+	// release it. Reported so the capacity figure can be audited rather than
+	// taken on trust.
+	ReclaimedMiB uint64 `json:"reclaimed_mib,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
-// measuredCapacity sums the free VRAM the cluster can devote to weights, using
-// the same readings and reserve as the scheduler.
-func (s *server) measuredCapacity() (total uint64, counted, unmeasured []string) {
+// measuredCapacity sums the VRAM the cluster can devote to a model's weights.
+//
+// The question each row of the catalogue answers is "if I select this, will it
+// fit", and selecting a model unloads the current one first. So the memory the
+// loaded model occupies is capacity, not consumption: it is about to be
+// returned. Leaving it out produced the contradiction of a running model
+// labelled "too large", because its own weights were being counted against it.
+//
+// held is what the loaded generation occupies per device. This uses the same
+// reclaimable() and reserve as the scheduler, so a verdict here and the tensor
+// split that follows cannot disagree about how much memory a device has.
+func (s *server) measuredCapacity(held heldVRAM) (total uint64, counted, unmeasured []string) {
 	if free, ok := localVRAMFree(); ok {
-		if u := usableVRAM(free, vramReserveMiB); u > 0 {
+		localTotal, haveTotal := localVRAMTotal()
+		effective := reclaimable(free, held.LocalMiB, localTotal, haveTotal)
+		if u := usableVRAM(effective, vramReserveMiB); u > 0 {
 			total += u
-			counted = append(counted, fmt.Sprintf("this laptop: %d MiB free", free))
+			counted = append(counted, describeDeviceCapacity("this laptop", free, held.LocalMiB))
 		}
 	} else {
 		unmeasured = append(unmeasured, "this laptop (no nvidia-smi reading)")
@@ -82,12 +97,25 @@ func (s *server) measuredCapacity() (total uint64, counted, unmeasured []string)
 			unmeasured = append(unmeasured, fmt.Sprintf("%s (%s reports no separate GPU memory)", label, gpu))
 			continue
 		}
-		if u := usableVRAM(free, vramReserveMiB); u > 0 {
+		epTotal, haveTotal := s.reg.measuredVRAMTotal(ep)
+		heldHere := held.heldOn(ep)
+		effective := reclaimable(free, heldHere, epTotal, haveTotal)
+		if u := usableVRAM(effective, vramReserveMiB); u > 0 {
 			total += u
-			counted = append(counted, fmt.Sprintf("%s: %d MiB free", label, free))
+			counted = append(counted, describeDeviceCapacity(label, free, heldHere))
 		}
 	}
 	return total, counted, unmeasured
+}
+
+// describeDeviceCapacity states a device's contribution so a reader can see
+// where the number came from, including memory counted because the loaded
+// model is about to release it.
+func describeDeviceCapacity(label string, free, held uint64) string {
+	if held == 0 {
+		return fmt.Sprintf("%s: %d MiB free", label, free)
+	}
+	return fmt.Sprintf("%s: %d MiB free + %d MiB the loaded model would release", label, free, held)
 }
 
 // assessFit turns a weight size and a measured capacity into a verdict.
@@ -139,7 +167,10 @@ func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(paths)
 
-	capMiB, counted, unmeasured := s.measuredCapacity()
+	// The loaded model's own memory is capacity for any candidate, because
+	// selecting one unloads the current first.
+	held := heldFromPlacement(s.sup.currentPlacement())
+	capMiB, counted, unmeasured := s.measuredCapacity(held)
 	current := s.sup.modelPath()
 
 	out := modelsResp{
@@ -148,6 +179,7 @@ func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
 		Contributors:        counted,
 		Unmeasured:          unmeasured,
 		ReserveMiB:          vramReserveMiB,
+		ReclaimedMiB:        held.totalMiB(),
 	}
 	for _, p := range paths {
 		fi, err := os.Stat(p)

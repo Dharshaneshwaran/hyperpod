@@ -128,3 +128,12 @@ func (h heldVRAM) String() string {
 	}
 	return strings.Join(parts, " + ")
 }
+
+// totalMiB is all the video memory this generation holds, across every device.
+func (h heldVRAM) totalMiB() uint64 {
+	total := h.LocalMiB
+	for _, mib := range h.RemoteMiB {
+		total += mib
+	}
+	return total
+}

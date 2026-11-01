@@ -459,6 +459,12 @@ export default function App() {
                     <p className="models-foot muted">
                       Counted: {models.contributors?.length ? models.contributors.join(" · ") : "nothing"}.
                       {" "}Reserve {models.reserve_mib} MiB per device.
+                      {models.reclaimed_mib ? (
+                        <>
+                          {" "}Includes {models.reclaimed_mib.toLocaleString()} MiB the loaded model
+                          releases when you switch away from it.
+                        </>
+                      ) : null}
                       {models.unmeasured?.length ? (
                         <>
                           {" "}Not counted: {models.unmeasured.join(" · ")} — so these verdicts are a

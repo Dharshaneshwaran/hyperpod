@@ -115,6 +115,8 @@ export type ModelsResp = {
   contributors?: string[];
   unmeasured?: string[];
   reserve_mib?: number;
+  /** VRAM counted because the loaded model is about to release it. */
+  reclaimed_mib?: number;
   error?: string;
 };
 
