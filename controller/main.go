@@ -140,6 +140,14 @@ type heartbeatReq struct {
 	Telemetry *Telemetry `json:"telemetry"`
 }
 
+// Output-length bounds. maxNPredict leaves room in the 2048-token context for
+// the prompt itself; raising it without raising HYPERPOD_CTX would let a long
+// answer collide with a long prompt.
+const (
+	defaultNPredict = 320
+	maxNPredict     = 1024
+)
+
 type inferReq struct {
 	Prompt   string `json:"prompt"`
 	NPredict int    `json:"n_predict"`
@@ -234,8 +242,14 @@ func (s *server) handleInfer(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, inferResp{OK: false, Error: "bad infer payload"})
 		return
 	}
+	// A missing limit gets a usable default rather than a stub answer. The upper
+	// clamp exists because the server is launched with a fixed context window:
+	// asking for more output than the window can hold wastes the whole request.
 	if req.NPredict <= 0 {
-		req.NPredict = 64
+		req.NPredict = defaultNPredict
+	}
+	if req.NPredict > maxNPredict {
+		req.NPredict = maxNPredict
 	}
 
 	if s.sup != nil {

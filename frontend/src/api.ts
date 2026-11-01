@@ -84,11 +84,12 @@ export async function fetchStatus(): Promise<Worker[]> {
 export async function infer(
   prompt: string,
   tier: "small" | "big",
+  nPredict = 320,
 ): Promise<InferResp> {
   const r = await fetch(`${CONTROLLER}/infer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, tier, n_predict: 96 }),
+    body: JSON.stringify({ prompt, tier, n_predict: nPredict }),
   });
   return (await r.json()) as InferResp;
 }

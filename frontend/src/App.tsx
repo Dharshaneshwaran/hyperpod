@@ -98,6 +98,9 @@ export default function App() {
   // playground
   const [prompt, setPrompt] = useState("In one sentence, what is teamwork?");
   const [tier, setTier] = useState<"small" | "big">("big");
+  // Output length is the user's call: more tokens means a longer wait,
+  // and over Wi-Fi that difference is measured in tens of seconds.
+  const [maxTokens, setMaxTokens] = useState(320);
   const [answer, setAnswer] = useState("");
   const [servedBy, setServedBy] = useState("");
   const [truncated, setTruncated] = useState(false);
@@ -214,7 +217,7 @@ export default function App() {
     setElapsed(null);
     const t0 = performance.now();
     try {
-      const d = await infer(prompt, tier);
+      const d = await infer(prompt, tier, maxTokens);
       setElapsed((performance.now() - t0) / 1000);
       if (d.ok) {
         setAnswer(d.text ?? "");
@@ -666,6 +669,23 @@ export default function App() {
                       )}
                     </button>
                   </div>
+                  <div className="seg" role="radiogroup" aria-label="Response length">
+                    {[
+                      { n: 128, label: "Short" },
+                      { n: 320, label: "Medium" },
+                      { n: 1024, label: "Long" },
+                    ].map((o) => (
+                      <button
+                        key={o.n}
+                        className={maxTokens === o.n ? "on" : ""}
+                        onClick={() => setMaxTokens(o.n)}
+                        aria-pressed={maxTokens === o.n}
+                        title={`${o.n} output tokens`}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
                   <button className="btn-primary" onClick={ask} disabled={busy || !online}>
                     {busy ? "Generating…" : "Send"}
                   </button>
@@ -686,7 +706,8 @@ export default function App() {
                     <p>{busy ? "Generating…" : answer}</p>
                     {!busy && truncated && (
                       <p className="truncated-note">
-                        Cut off at the output-token limit, so this answer is incomplete.
+                        Cut off at {maxTokens} output tokens, so this answer is incomplete.
+                        {maxTokens < 1024 && " Choose a longer response length and send again."}
                       </p>
                     )}
                   </div>

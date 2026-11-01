@@ -325,7 +325,10 @@ textarea {
   resize: vertical;
 }
 textarea:focus { border-color: var(--primary); }
-.pg-controls { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.pg-controls {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin-top: 14px;
+}
 .seg {
   display: inline-flex; padding: 3px;
   border: 1px solid var(--border); border-radius: var(--radius-sm);
