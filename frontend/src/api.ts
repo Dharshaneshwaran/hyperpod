@@ -54,6 +54,9 @@ export type InferResp = {
 export type DevicePlacement = { device: string; mib: number };
 export type Pipeline = {
   generation: number;
+  /** GGUF file name and its size on disk, from the controller. */
+  model_name?: string;
+  model_bytes?: number;
   state: "down" | "loading" | "ready";
   rpc_workers: string[] | null;
   devices: DevicePlacement[] | null;

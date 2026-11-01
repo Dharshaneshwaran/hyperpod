@@ -53,6 +53,12 @@ function memoryPair(available: number | null | undefined, total: number | null |
   return `${available == null ? "?" : available.toFixed(0)} / ${total == null ? "?" : total.toFixed(0)} MiB`;
 }
 
+/** Bytes to GB, decimal, matching how model files are advertised. */
+function modelSize(bytes: number | null | undefined) {
+  if (!bytes) return null;
+  return `${(bytes / 1e9).toFixed(2)} GB`;
+}
+
 function powerState(online: boolean | null | undefined) {
   return online == null ? "Unavailable" : online ? "AC online" : "On battery";
 }
@@ -313,7 +319,12 @@ export default function App() {
                   <div className={`stat-v ${down ? "down" : ""}`}>{down}</div>
                 </div>
                 <div className="stat">
-                  <div className="stat-l">Big-tier model (3B)</div>
+                  <div className="stat-l">
+                    Big-tier model (3B)
+                    {modelSize(pipeline?.model_bytes) && (
+                      <> · {modelSize(pipeline?.model_bytes)}</>
+                    )}
+                  </div>
                   <div className={`stat-v sm ${pipeline?.split ? "ok" : ""}`}>
                     {!pipeline || pipeline.state === "down"
                       ? "Not loaded"
@@ -382,6 +393,13 @@ export default function App() {
                 <div className="card-head">
                   <h2>Big-tier model placement</h2>
                   <span className="muted">
+                    {pipeline?.model_name && (
+                      <>
+                        {pipeline.model_name}
+                        {modelSize(pipeline.model_bytes) && <> · {modelSize(pipeline.model_bytes)}</>}
+                        {" · "}
+                      </>
+                    )}
                     Reported by llama.cpp while loading
                     {pipeline && pipeline.generation > 0 && <> · build {pipeline.generation}</>}
                   </span>

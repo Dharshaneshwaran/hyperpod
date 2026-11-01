@@ -104,6 +104,11 @@ type pipelineInfo struct {
 	TensorSplit       string            `json:"tensor_split"`
 	SplitWeightsMiB   []uint64          `json:"split_weights_mib"`
 	VRAMReserveMiB    uint64            `json:"vram_reserve_mib"`
+	// ModelName is the GGUF file name, and ModelBytes its size on disk. Both
+	// describe the file being served, so the interface can state how large the
+	// model actually is instead of only its parameter count.
+	ModelName  string `json:"model_name,omitempty"`
+	ModelBytes int64  `json:"model_bytes,omitempty"`
 	// LoadingSecs is how long the current generation has been loading (0 once ready).
 	LoadingSecs float64 `json:"loading_secs"`
 	// ReadySecs is how long the current generation took to become ready.
@@ -474,6 +479,16 @@ func (s *supervisor) info() pipelineInfo {
 			split = true
 		}
 	}
+	// The model file is fixed for the process, so stat it here rather than
+	// caching a size that could go stale if the file is replaced.
+	var modelName string
+	var modelBytes int64
+	if s.model != "" {
+		modelName = filepath.Base(s.model)
+		if fi, err := os.Stat(s.model); err == nil {
+			modelBytes = fi.Size()
+		}
+	}
 	return pipelineInfo{
 		Generation:        s.generation,
 		State:             state,
@@ -485,6 +500,8 @@ func (s *supervisor) info() pipelineInfo {
 		TensorSplit:       s.tensorSplit,
 		SplitWeightsMiB:   append([]uint64(nil), s.splitWeightsMiB...),
 		VRAMReserveMiB:    s.vramReserveMiB,
+		ModelName:         modelName,
+		ModelBytes:        modelBytes,
 		LoadingSecs:       loading,
 		ReadySecs:         s.readyAfter.Seconds(),
 	}
