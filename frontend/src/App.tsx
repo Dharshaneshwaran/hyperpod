@@ -56,6 +56,18 @@ function memoryPair(available: number | null | undefined, total: number | null |
   return `${available == null ? "?" : available.toFixed(0)} / ${total == null ? "?" : total.toFixed(0)} MiB`;
 }
 
+/**
+ * A short, readable label from a GGUF file name. The tier labels used to be
+ * hardcoded ("3B"), which became wrong as soon as the model could be changed,
+ * so they are derived from the file actually loaded.
+ */
+function modelLabel(name: string | null | undefined, fallback: string) {
+  if (!name) return fallback;
+  const m = name.replace(/\.gguf$/i, "").match(/^(?:Meta-)?(Llama)-?([\d.]+)-(\d+B)/i);
+  if (m) return `${m[1]} ${m[2]} ${m[3].toUpperCase()}`;
+  return name.replace(/\.gguf$/i, "");
+}
+
 /** Bytes to GB, decimal, matching how model files are advertised. */
 function modelSize(bytes: number | null | undefined) {
   if (!bytes) return null;
@@ -326,7 +338,7 @@ export default function App() {
                 </div>
                 <div className="stat">
                   <div className="stat-l">
-                    Big-tier model (3B)
+                    Big tier · {modelLabel(pipeline?.model_name, "not set")}
                     {modelSize(pipeline?.model_bytes) && (
                       <> · {modelSize(pipeline?.model_bytes)}</>
                     )}
@@ -645,10 +657,10 @@ export default function App() {
                 <div className="pg-controls">
                   <div className="seg" role="radiogroup" aria-label="Model tier">
                     <button className={tier === "small" ? "on" : ""} onClick={() => setTier("small")}>
-                      <IconBolt size={14} /> Small · 1B
+                      <IconBolt size={14} /> Small · {modelLabel(pipeline?.small_model_name, "1B")}
                     </button>
                     <button className={tier === "big" ? "on" : ""} onClick={() => setTier("big")}>
-                      <IconAffiliate size={14} /> Big · 3B split
+                      <IconAffiliate size={14} /> Big · {modelLabel(pipeline?.model_name, "big")}
                       {modelSize(pipeline?.model_bytes) && (
                         <span className="seg-size">{modelSize(pipeline?.model_bytes)}</span>
                       )}

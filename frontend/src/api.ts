@@ -57,6 +57,7 @@ export type Pipeline = {
   /** GGUF file name and its size on disk, from the controller. */
   model_name?: string;
   model_bytes?: number;
+  small_model_name?: string;
   state: "down" | "loading" | "ready";
   rpc_workers: string[] | null;
   devices: DevicePlacement[] | null;

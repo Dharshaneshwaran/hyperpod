@@ -109,6 +109,9 @@ type pipelineInfo struct {
 	// model actually is instead of only its parameter count.
 	ModelName  string `json:"model_name,omitempty"`
 	ModelBytes int64  `json:"model_bytes,omitempty"`
+	// SmallModelName is the small tier's file, reported for the same reason:
+	// so the interface can name what it is serving instead of assuming.
+	SmallModelName string `json:"small_model_name,omitempty"`
 	// LoadingSecs is how long the current generation has been loading (0 once ready).
 	LoadingSecs float64 `json:"loading_secs"`
 	// ReadySecs is how long the current generation took to become ready.
@@ -481,8 +484,11 @@ func (s *supervisor) info() pipelineInfo {
 	}
 	// The model file is fixed for the process, so stat it here rather than
 	// caching a size that could go stale if the file is replaced.
-	var modelName string
+	var modelName, smallName string
 	var modelBytes int64
+	if s.smallModel != "" {
+		smallName = filepath.Base(s.smallModel)
+	}
 	if s.model != "" {
 		modelName = filepath.Base(s.model)
 		if fi, err := os.Stat(s.model); err == nil {
@@ -502,6 +508,7 @@ func (s *supervisor) info() pipelineInfo {
 		VRAMReserveMiB:    s.vramReserveMiB,
 		ModelName:         modelName,
 		ModelBytes:        modelBytes,
+		SmallModelName:    smallName,
 		LoadingSecs:       loading,
 		ReadySecs:         s.readyAfter.Seconds(),
 	}
