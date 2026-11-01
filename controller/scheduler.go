@@ -26,7 +26,13 @@ type splitPlan struct {
 // It never derives capacity from a GPU name. If any selected worker or the
 // controller's local GPU lacks a measured free-VRAM value, TensorSplit is left
 // empty and llama.cpp performs its own device probing (`llama.cpp-auto`).
-func (s *server) planSplit(endpoints []string) splitPlan {
+//
+// held is what the outgoing generation still occupies per device. It is added
+// back before weighing, because that memory belongs to the model being replaced
+// and will be free by the time the new one loads. Scheduling without it made
+// the split depend on how far the previous teardown had progressed. See
+// reclaim.go for the measurements that showed this.
+func (s *server) planSplit(endpoints []string, held heldVRAM) splitPlan {
 	workers := append([]string(nil), endpoints...)
 	sort.Strings(workers)
 	if len(workers) == 0 {
@@ -41,7 +47,9 @@ func (s *server) planSplit(endpoints []string) splitPlan {
 				Workers: workers, Strategy: "llama.cpp-auto (remote free VRAM unavailable)", ReserveMiB: vramReserveMiB,
 			}
 		}
-		usable := usableVRAM(free, vramReserveMiB)
+		total, haveTotal := s.reg.measuredVRAMTotal(endpoint)
+		effective := reclaimable(free, held.heldOn(endpoint), total, haveTotal)
+		usable := usableVRAM(effective, vramReserveMiB)
 		if usable == 0 {
 			return splitPlan{
 				Workers: workers, Strategy: "llama.cpp-auto (remote usable VRAM is zero)", ReserveMiB: vramReserveMiB,
@@ -56,7 +64,9 @@ func (s *server) planSplit(endpoints []string) splitPlan {
 			Workers: workers, Strategy: "llama.cpp-auto (local free VRAM unavailable)", ReserveMiB: vramReserveMiB,
 		}
 	}
-	localUsable := usableVRAM(localFree, vramReserveMiB)
+	localTotal, haveLocalTotal := localVRAMTotal()
+	localEffective := reclaimable(localFree, held.LocalMiB, localTotal, haveLocalTotal)
+	localUsable := usableVRAM(localEffective, vramReserveMiB)
 	if localUsable == 0 {
 		return splitPlan{
 			Workers: workers, Strategy: "llama.cpp-auto (local usable VRAM is zero)", ReserveMiB: vramReserveMiB,
@@ -81,6 +91,20 @@ func usableVRAM(free, reserve uint64) uint64 {
 	return free - reserve
 }
 
+// measuredVRAMTotal reports a worker's total video memory, used only to cap the
+// reclaim estimate. Absent means no cap rather than a guessed ceiling.
+func (r *registry) measuredVRAMTotal(endpoint string) (uint64, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, worker := range r.workers {
+		if worker.RPCAddr != endpoint || worker.Telemetry == nil || worker.Telemetry.GPU == nil || worker.Telemetry.GPU.VRAMTotalMiB == nil {
+			continue
+		}
+		return *worker.Telemetry.GPU.VRAMTotalMiB, true
+	}
+	return 0, false
+}
+
 func (r *registry) measuredVRAMFree(endpoint string) (uint64, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -96,6 +120,22 @@ func (r *registry) measuredVRAMFree(endpoint string) (uint64, bool) {
 // localVRAMFree is a variable so scheduler tests can supply a measured fixture
 // without depending on the test machine's GPU.
 var localVRAMFree = collectLocalVRAMFreeMiB
+
+// localVRAMTotal is a variable for the same reason as localVRAMFree: tests
+// supply a fixture instead of depending on the machine's GPU.
+var localVRAMTotal = collectLocalVRAMTotalMiB
+
+// collectLocalVRAMTotalMiB asks the local driver for total VRAM. Used only to
+// cap the reclaim estimate, so unavailability simply means no cap.
+func collectLocalVRAMTotalMiB() (uint64, bool) {
+	output, err := exec.Command(
+		"nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits",
+	).Output()
+	if err != nil {
+		return 0, false
+	}
+	return parseSingleMiB(string(output))
+}
 
 // collectLocalVRAMFreeMiB asks the local NVIDIA driver for current free VRAM.
 // A missing command, N/A field, parse failure, or multiple-value ambiguity is

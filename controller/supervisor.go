@@ -57,7 +57,7 @@ type supervisor struct {
 
 	// rpcWorkers is the ordered list of ggml-rpc-server endpoints in the current split.
 	rpcWorkers []string
-	planner    func([]string) splitPlan
+	planner    func([]string, heldVRAM) splitPlan
 
 	// Scheduler decision used for the current generation.
 	schedulerStrategy string
@@ -269,9 +269,15 @@ func (s *supervisor) waitReadyURL(base string, timeout time.Duration) error {
 func (s *supervisor) launchLocked(workers []string) error {
 	s.stopLocked()
 
+	// What the generation we just stopped still occupies. stopLocked kills the
+	// process but leaves s.placement intact precisely so this is available:
+	// that memory is ours and will be free once the driver and the remote
+	// rpc-servers finish releasing it.
+	held := heldFromPlacement(s.placement)
+
 	plan := splitPlan{Workers: append([]string(nil), workers...), Strategy: "llama.cpp-auto"}
 	if s.planner != nil {
-		plan = s.planner(workers)
+		plan = s.planner(workers, held)
 	}
 	workers = plan.Workers
 
@@ -317,7 +323,8 @@ func (s *supervisor) launchLocked(workers []string) error {
 	s.rpcWorkers = workers
 	s.generation++
 	gen := s.generation
-	log.Printf("supervisor: launched llama-server (gen %d) over %v; scheduler=%s", gen, workers, plan.String())
+	log.Printf("supervisor: launched llama-server (gen %d) over %v; scheduler=%s; reclaimed from previous gen: %s",
+		gen, workers, plan.String(), held.String())
 
 	// Stream llama-server's log: keep only the useful lines, and capture the
 	// device placement it reports while loading.

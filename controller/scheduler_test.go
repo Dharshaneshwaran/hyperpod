@@ -16,6 +16,13 @@ func telemetryWithFreeVRAM(free uint64) *Telemetry {
 	}
 }
 
+// telemetryWithVRAM carries a total as well, so the reclaim cap applies.
+func telemetryWithVRAM(free, total uint64) *Telemetry {
+	t := telemetryWithFreeVRAM(free)
+	t.GPU.VRAMTotalMiB = u64ptr(total)
+	return t
+}
+
 func TestUsableVRAM(t *testing.T) {
 	for _, tc := range []struct {
 		free, reserve, want uint64
@@ -39,7 +46,7 @@ func TestPlanSplitUsesMeasuredFreeVRAMInDeterministicOrder(t *testing.T) {
 	s.reg.register(&worker{ID: "b", RPCAddr: "10.0.0.2:50052", Telemetry: telemetryWithFreeVRAM(4096)})
 	s.reg.register(&worker{ID: "a", RPCAddr: "10.0.0.1:50052", Telemetry: telemetryWithFreeVRAM(6144)})
 
-	plan := s.planSplit([]string{"10.0.0.2:50052", "10.0.0.1:50052"})
+	plan := s.planSplit([]string{"10.0.0.2:50052", "10.0.0.1:50052"}, heldVRAM{})
 	if plan.Strategy != "measured-free-vram" {
 		t.Fatalf("strategy=%q", plan.Strategy)
 	}
@@ -58,7 +65,7 @@ func TestPlanSplitDoesNotInventMissingCapacity(t *testing.T) {
 
 	s := &server{reg: newRegistry()}
 	s.reg.register(&worker{ID: "unknown", RPCAddr: "10.0.0.1:50052", Telemetry: nil})
-	plan := s.planSplit([]string{"10.0.0.1:50052"})
+	plan := s.planSplit([]string{"10.0.0.1:50052"}, heldVRAM{})
 	if plan.TensorSplit != "" || len(plan.WeightsMiB) != 0 {
 		t.Fatalf("missing capacity produced invented weights: %+v", plan)
 	}
