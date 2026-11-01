@@ -583,6 +583,9 @@ export default function App() {
                     </button>
                     <button className={tier === "big" ? "on" : ""} onClick={() => setTier("big")}>
                       <IconAffiliate size={14} /> Big · 3B split
+                      {modelSize(pipeline?.model_bytes) && (
+                        <span className="seg-size">{modelSize(pipeline?.model_bytes)}</span>
+                      )}
                     </button>
                   </div>
                   <button className="btn-primary" onClick={ask} disabled={busy || !online}>
