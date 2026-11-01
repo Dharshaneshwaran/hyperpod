@@ -299,7 +299,7 @@ fn parse_chipset_model(output: &str) -> Option<String> {
     output
         .lines()
         .find_map(|line| line.split_once("Chipset Model:").map(|(_, v)| v))
-        .and_then(|value| optional_text(value))
+        .and_then(optional_text)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]

@@ -7,7 +7,7 @@
 #    2) hyperpod-worker  (broadcasts presence -> auto-appears in dashboard)
 #
 #  Usage:  ./start-worker.sh            (uses defaults below)
-#          CONTROLLER_IP=192.168.1.20 ./start-worker.sh
+#          CONTROLLER_IP=192.168.1.34 ./start-worker.sh
 # ==========================================================================
 set -e
 
@@ -22,12 +22,11 @@ MODEL="${MODEL:-$BASE/test/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf}"
 BIN="$BASE/test/llama.cpp/build/bin"
 WORKER="$BASE/worker/target/release/hyperpod-worker"
 
-# auto-detect this laptop's LAN IP
-MY_IP="$(ip route get 1.1.1.1 2>/dev/null | grep -oP '(?<=src\s)\d+(\.\d+){3}' | head -1)"
-MY_IP="${MY_IP:-127.0.0.1}"
+# The worker asks the OS which of this machine's addresses routes to the
+# controller, so a laptop on both Ethernet and Wi-Fi advertises the one that
+# is actually reachable.
 
 echo "==== HyperPod worker launcher (Linux) ===="
-echo "this laptop IP : $MY_IP"
 echo "controller     : http://$CONTROLLER_IP:8080"
 echo
 
@@ -45,8 +44,7 @@ sleep 1
 setsid nohup env \
   HYPERPOD_WORKER_ID="$WORKER_ID" \
   HYPERPOD_CONTROLLER="http://$CONTROLLER_IP:8080" \
-  HYPERPOD_WORKER_ADVERTISE="http://$MY_IP:9100" \
-  HYPERPOD_RPC_ADVERTISE="$MY_IP:$RPC_PORT" \
+  HYPERPOD_RPC_PORT="$RPC_PORT" \
   HYPERPOD_LLAMA_CLI="$BIN/llama-cli" \
   HYPERPOD_MODEL="$MODEL" \
   "$WORKER" >/tmp/hp-worker.log 2>&1 </dev/null &

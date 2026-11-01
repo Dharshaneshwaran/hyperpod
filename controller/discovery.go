@@ -57,6 +57,23 @@ func (s *server) startDiscovery() {
 			a.Address = "http://" + src.IP.String() + ":9100"
 		}
 
+		// A worker on both Ethernet and Wi-Fi can advertise the interface the
+		// controller cannot reach. The source address of this broadcast is, by
+		// construction, one that reaches us, so when the two disagree the
+		// observed address is the safer bet. The advertised port is kept: only
+		// the host is corrected. This is logged because silently rewriting what
+		// a worker said about itself would be impossible to debug.
+		if a.RPCAddr != "" {
+			if host, port, err := net.SplitHostPort(a.RPCAddr); err == nil && host != src.IP.String() {
+				corrected := net.JoinHostPort(src.IP.String(), port)
+				log.Printf(
+					"discovery: worker %q advertised rpc=%s but broadcast came from %s; using %s",
+					a.WorkerID, a.RPCAddr, src.IP, corrected,
+				)
+				a.RPCAddr = corrected
+			}
+		}
+
 		gpu := a.GPU
 		if a.Telemetry != nil && a.Telemetry.GPU != nil && a.Telemetry.GPU.Name != nil {
 			gpu = *a.Telemetry.GPU.Name

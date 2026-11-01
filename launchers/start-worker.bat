@@ -10,7 +10,8 @@ REM  Edit the CONFIG block below to match this laptop, then just double-click.
 REM ==========================================================================
 
 REM ---------------- CONFIG (edit these once) ----------------
-set "CONTROLLER_IP=192.168.1.20"
+REM Set this to the controller's address on your network.
+set "CONTROLLER_IP=192.168.1.34"
 set "RPC_PORT=50052"
 set "WORKER_ID=worker-%COMPUTERNAME%"
 set "LLAMA_DIR=C:\llama-cuda"
@@ -21,14 +22,9 @@ REM ----------------------------------------------------------
 echo(
 echo ==== HyperPod worker launcher (Windows) ====
 
-REM Auto-detect this laptop's IPv4 on the Wi-Fi (first non-loopback IPv4).
-for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /r /c:"IPv4.*192\.168\." /c:"IPv4.*10\." /c:"IPv4.*172\."') do (
-    if not defined MY_IP set "MY_IP=%%a"
-)
-REM strip leading space
-for /f "tokens=* delims= " %%b in ("%MY_IP%") do set "MY_IP=%%b"
-if not defined MY_IP set "MY_IP=127.0.0.1"
-echo Detected this laptop IP: %MY_IP%
+REM The worker decides which of this machine's addresses the controller can
+REM reach, by asking the OS for the route. Guessing the first IPv4 from
+REM ipconfig picked Wi-Fi while Ethernet was the reachable path.
 echo Controller:              http://%CONTROLLER_IP%:8080
 echo(
 
@@ -43,8 +39,7 @@ REM 2) Start the worker (broadcasts presence + serves /run) in its own window.
 echo Starting hyperpod-worker ...
 set "HYPERPOD_WORKER_ID=%WORKER_ID%"
 set "HYPERPOD_CONTROLLER=http://%CONTROLLER_IP%:8080"
-set "HYPERPOD_WORKER_ADVERTISE=http://%MY_IP%:9100"
-set "HYPERPOD_RPC_ADVERTISE=%MY_IP%:%RPC_PORT%"
+set "HYPERPOD_RPC_PORT=%RPC_PORT%"
 set "HYPERPOD_LLAMA_CLI=%LLAMA_DIR%\llama-cli.exe"
 set "HYPERPOD_MODEL=%MODEL%"
 start "HyperPod worker" cmd /k "%WORKER_EXE%"

@@ -15,6 +15,7 @@
 //   HYPERPOD_WORKER_ADVERTISE default "http://127.0.0.1:9100" (told to controller)
 //   HYPERPOD_CONTROLLER       default "http://127.0.0.1:8080"
 //   HYPERPOD_LLAMA_CLI        path to llama-cli binary (required)
+mod localaddr;
 mod telemetry;
 //   HYPERPOD_MODEL            path to .gguf model (required)
 //   HYPERPOD_NGL              gpu layers, default "99"
@@ -73,6 +74,7 @@ struct Config {
     worker_id: String,
     bind: String,
     advertise: String,
+    rpc_advertise: String,
     controller: String,
     llama_cli: String,
     model: String,
@@ -94,11 +96,41 @@ fn load_config() -> Result<Config, String> {
     if !std::path::Path::new(&model).exists() {
         return Err(format!("model not found at {model}"));
     }
+    let controller = env_or("HYPERPOD_CONTROLLER", "http://127.0.0.1:8080");
+    let rpc_port = env_or("HYPERPOD_RPC_PORT", "50052");
+    let worker_port = env_or("HYPERPOD_WORKER_PORT", "9100");
+
+    // Which of this machine's addresses the controller can reach. A laptop on
+    // both Ethernet and Wi-Fi has two, and advertising the wrong one gives a
+    // worker that heartbeats but whose RPC server is unreachable. An explicit
+    // env override always wins; this only replaces the guess.
+    let detected = localaddr::toward(&controller);
+    let advertise = match std::env::var("HYPERPOD_WORKER_ADVERTISE") {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => match detected {
+            Some(ip) => format!("http://{ip}:{worker_port}"),
+            None => format!("http://127.0.0.1:{worker_port}"),
+        },
+    };
+    let rpc_advertise = match std::env::var("HYPERPOD_RPC_ADVERTISE") {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => match detected {
+            Some(ip) => format!("{ip}:{rpc_port}"),
+            None => String::new(),
+        },
+    };
+    if let Some(ip) = detected {
+        println!("[worker] controller reachable from this machine's {ip}; advertising that");
+    } else {
+        println!("[worker] could not determine a route to {controller}; advertising loopback");
+    }
+
     Ok(Config {
         worker_id: env_or("HYPERPOD_WORKER_ID", "worker-A"),
         bind: env_or("HYPERPOD_WORKER_BIND", "0.0.0.0:9100"),
-        advertise: env_or("HYPERPOD_WORKER_ADVERTISE", "http://127.0.0.1:9100"),
-        controller: env_or("HYPERPOD_CONTROLLER", "http://127.0.0.1:8080"),
+        advertise,
+        rpc_advertise,
+        controller,
         llama_cli,
         model,
         ngl: env_or("HYPERPOD_NGL", "99"),
@@ -148,7 +180,7 @@ fn register(cfg: &Config, shared: &SharedTelemetry) {
         let req = RegisterReq {
             worker_id: cfg.worker_id.clone(),
             address: cfg.advertise.clone(),
-            rpc_addr: env_or("HYPERPOD_RPC_ADVERTISE", ""),
+            rpc_addr: cfg.rpc_advertise.clone(),
             gpu: measured_gpu_name(&telemetry),
             os: detect_os(),
             telemetry,
@@ -208,7 +240,7 @@ fn start_discovery_broadcast(cfg: Config, shared: SharedTelemetry) {
                 kind: "hyperpod-worker".to_string(),
                 worker_id: cfg.worker_id.clone(),
                 address: cfg.advertise.clone(),
-                rpc_addr: env_or("HYPERPOD_RPC_ADVERTISE", ""),
+                rpc_addr: cfg.rpc_advertise.clone(),
                 gpu: measured_gpu_name(&telemetry),
                 os: detect_os(),
                 telemetry,
