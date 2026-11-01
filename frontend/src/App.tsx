@@ -79,6 +79,7 @@ export default function App() {
   const [tier, setTier] = useState<"small" | "big">("big");
   const [answer, setAnswer] = useState("");
   const [servedBy, setServedBy] = useState("");
+  const [truncated, setTruncated] = useState(false);
   const [placement, setPlacement] = useState("");
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
@@ -184,6 +185,7 @@ export default function App() {
     setBusy(true);
     setAnswer("");
     setServedBy("");
+    setTruncated(false);
     setPlacement("");
     setElapsed(null);
     const t0 = performance.now();
@@ -193,6 +195,7 @@ export default function App() {
       if (d.ok) {
         setAnswer(d.text ?? "");
         setServedBy(d.worker_id ?? "");
+        setTruncated(d.truncated === true);
         setPlacement(d.placement ?? "");
       } else setAnswer(d.loading ? `⏳ ${d.error}` : `Error: ${d.error ?? "unknown"}`);
     } catch (e) {
@@ -582,6 +585,11 @@ export default function App() {
                       </div>
                     )}
                     <p>{busy ? "Generating…" : answer}</p>
+                    {!busy && truncated && (
+                      <p className="truncated-note">
+                        Cut off at the output-token limit, so this answer is incomplete.
+                      </p>
+                    )}
                   </div>
                 )}
               </section>

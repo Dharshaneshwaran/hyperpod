@@ -573,8 +573,9 @@ func (s *supervisor) monitorWorkers(healthyFn func() []string) {
 	}
 }
 
-// completion sends a prompt to the supervised llama-server and returns the text.
-func (s *supervisor) completion(ctx context.Context, prompt string, nPredict int) (string, error) {
+// completion sends a prompt to the supervised llama-server and returns the text
+// along with llama.cpp's finish_reason.
+func (s *supervisor) completion(ctx context.Context, prompt string, nPredict int) (string, string, error) {
 	return s.completionAt(ctx, s.baseURL(), prompt, nPredict)
 }
 
@@ -583,7 +584,12 @@ func (s *supervisor) completion(ctx context.Context, prompt string, nPredict int
 // apply the model's CHAT TEMPLATE, so the model answers cleanly instead of
 // drifting into raw instruction tokens like [INST]/<<SYS>> (which happens when
 // posting an un-templated prompt to the raw /completion endpoint).
-func (s *supervisor) completionAt(ctx context.Context, base, prompt string, nPredict int) (string, error) {
+//
+// The second return value is llama.cpp's finish_reason. It is "length" when the
+// answer was cut off at max_tokens and "stop" when the model ended on its own.
+// The caller surfaces that difference, because a truncated answer that looks
+// complete is worse than one that is labelled.
+func (s *supervisor) completionAt(ctx context.Context, base, prompt string, nPredict int) (string, string, error) {
 	body, _ := json.Marshal(map[string]any{
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
@@ -596,25 +602,26 @@ func (s *supervisor) completionAt(ctx context.Context, base, prompt string, nPre
 	client := &http.Client{Timeout: 180 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("llama-server status %d: %s", resp.StatusCode, string(raw))
+		return "", "", fmt.Errorf("llama-server status %d: %s", resp.StatusCode, string(raw))
 	}
 	var out struct {
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", fmt.Errorf("bad llama-server response: %w", err)
+		return "", "", fmt.Errorf("bad llama-server response: %w", err)
 	}
 	if len(out.Choices) == 0 {
-		return "", fmt.Errorf("llama-server returned no choices")
+		return "", "", fmt.Errorf("llama-server returned no choices")
 	}
-	return strings.TrimSpace(out.Choices[0].Message.Content), nil
+	return strings.TrimSpace(out.Choices[0].Message.Content), out.Choices[0].FinishReason, nil
 }

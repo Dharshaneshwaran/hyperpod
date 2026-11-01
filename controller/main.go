@@ -156,6 +156,10 @@ type inferResp struct {
 	Split     bool   `json:"split"`
 	// Loading is true when the big-tier model is still loading.
 	Loading bool `json:"loading,omitempty"`
+	// Truncated is true when llama.cpp stopped at the token limit rather than
+	// because the model finished. Without this the answer just ends mid-sentence
+	// and the caller cannot tell an incomplete answer from a complete one.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // workerRunReq/Resp mirror the worker's POST /run contract.
@@ -262,12 +266,18 @@ func (s *server) handleInferSmall(w http.ResponseWriter, req inferReq) {
 			return
 		}
 	}
-	text, err := s.sup.completionAt(context.Background(), s.sup.smallBaseURL(), req.Prompt, req.NPredict)
+	text, finish, err := s.sup.completionAt(context.Background(), s.sup.smallBaseURL(), req.Prompt, req.NPredict)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, inferResp{OK: false, Error: fmt.Sprintf("small tier inference failed: %v", err)})
 		return
 	}
-	writeJSON(w, http.StatusOK, inferResp{OK: true, WorkerID: "small tier · 1B", Text: text, Placement: "this laptop only (no split)"})
+	writeJSON(w, http.StatusOK, inferResp{
+		OK:        true,
+		WorkerID:  "small tier · 1B",
+		Text:      text,
+		Placement: "this laptop only (no split)",
+		Truncated: finish == "length",
+	})
 }
 
 // handleInferSupervised runs the prompt through the supervised split pipeline.
@@ -299,7 +309,7 @@ func (s *server) handleInferSupervised(w http.ResponseWriter, req inferReq) {
 			log.Printf("infer attempt %d: %v", attempt, lastErr)
 			continue
 		}
-		text, err := s.sup.completion(context.Background(), req.Prompt, req.NPredict)
+		text, finish, err := s.sup.completion(context.Background(), req.Prompt, req.NPredict)
 		if err == nil {
 			info := s.sup.info()
 			label := "big tier · local only"
@@ -312,6 +322,7 @@ func (s *server) handleInferSupervised(w http.ResponseWriter, req inferReq) {
 				Text:      text,
 				Placement: info.describe(),
 				Split:     info.Split,
+				Truncated: finish == "length",
 			})
 			return
 		}

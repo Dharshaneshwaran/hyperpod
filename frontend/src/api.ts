@@ -47,6 +47,8 @@ export type InferResp = {
   placement?: string;
   split?: boolean;
   loading?: boolean;
+  /** True when llama.cpp stopped at the token limit, so the answer is incomplete. */
+  truncated?: boolean;
 };
 
 export type DevicePlacement = { device: string; mib: number };

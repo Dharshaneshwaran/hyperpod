@@ -517,3 +517,14 @@ textarea:focus { border-color: var(--primary); }
 .waiting .empty { margin-top: 0; }
 
 /* The figure reads currentColor, so reduced motion only needs the library's own guard. */
+
+/* Shown when llama.cpp stopped at the token limit, so the answer is incomplete. */
+.truncated-note {
+  margin: 10px 0 0;
+  padding: 7px 10px;
+  border-left: 2px solid var(--warning);
+  background: oklch(0.7 0.18 70 / 0.08);
+  border-radius: var(--radius-xs);
+  font-size: 13px;
+  color: var(--foreground);
+}
