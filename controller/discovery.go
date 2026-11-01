@@ -8,6 +8,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -58,20 +59,12 @@ func (s *server) startDiscovery() {
 		}
 
 		// A worker on both Ethernet and Wi-Fi can advertise the interface the
-		// controller cannot reach. The source address of this broadcast is, by
-		// construction, one that reaches us, so when the two disagree the
-		// observed address is the safer bet. The advertised port is kept: only
-		// the host is corrected. This is logged because silently rewriting what
-		// a worker said about itself would be impossible to debug.
-		if a.RPCAddr != "" {
-			if host, port, err := net.SplitHostPort(a.RPCAddr); err == nil && host != src.IP.String() {
-				corrected := net.JoinHostPort(src.IP.String(), port)
-				log.Printf(
-					"discovery: worker %q advertised rpc=%s but broadcast came from %s; using %s",
-					a.WorkerID, a.RPCAddr, src.IP, corrected,
-				)
-				a.RPCAddr = corrected
-			}
+		// controller cannot reach, and an older worker build may not advertise
+		// one at all. The broadcast's source address is, by construction, one
+		// that reaches us, so it is the safer choice in both cases.
+		if addr, why := resolveRPCAddr(a.RPCAddr, src.IP.String()); why != "" {
+			log.Printf("discovery: worker %q %s", a.WorkerID, why)
+			a.RPCAddr = addr
 		}
 
 		gpu := a.GPU
@@ -91,4 +84,32 @@ func (s *server) startDiscovery() {
 			log.Printf("discovery: auto-registered worker %q from %s (rpc=%s)", a.WorkerID, src.IP, a.RPCAddr)
 		}
 	}
+}
+
+// defaultRPCPort is the port ggml-rpc-server listens on in every launcher here.
+// It is the assumption made when a worker advertises no RPC address at all.
+const defaultRPCPort = "50052"
+
+// resolveRPCAddr decides which RPC address to trust for a worker, given what it
+// advertised and the source address its broadcast actually arrived from.
+//
+// It returns the address to use and, when that differs from what the worker
+// claimed, a sentence explaining why. An empty reason means the advertised
+// address was already consistent and must be left alone: the controller should
+// not rewrite a worker's own account of itself without saying so.
+func resolveRPCAddr(advertised, srcIP string) (addr, why string) {
+	if advertised == "" {
+		a := net.JoinHostPort(srcIP, defaultRPCPort)
+		return a, fmt.Sprintf("advertised no rpc address; assuming %s from its broadcast source", a)
+	}
+	host, port, err := net.SplitHostPort(advertised)
+	if err != nil {
+		a := net.JoinHostPort(srcIP, defaultRPCPort)
+		return a, fmt.Sprintf("advertised an unparseable rpc address %q; assuming %s", advertised, a)
+	}
+	if host == srcIP {
+		return advertised, ""
+	}
+	a := net.JoinHostPort(srcIP, port)
+	return a, fmt.Sprintf("advertised rpc=%s but broadcast came from %s; using %s", advertised, srcIP, a)
 }
