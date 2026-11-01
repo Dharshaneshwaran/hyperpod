@@ -91,3 +91,42 @@ export async function infer(
   });
   return (await r.json()) as InferResp;
 }
+
+export type ModelFit = "fits" | "tight" | "too large" | "unknown";
+
+export type ModelEntry = {
+  name: string;
+  path: string;
+  bytes: number;
+  mib: number;
+  fit: ModelFit;
+  reason: string;
+  selected: boolean;
+};
+
+export type ModelsResp = {
+  ok: boolean;
+  models?: ModelEntry[];
+  /** Sum of free VRAM over devices that actually reported a figure. */
+  measured_capacity_mib?: number;
+  /** What was counted, and which healthy devices could not be. */
+  contributors?: string[];
+  unmeasured?: string[];
+  reserve_mib?: number;
+  error?: string;
+};
+
+export async function fetchModels(): Promise<ModelsResp> {
+  const r = await fetch(`${CONTROLLER}/models`);
+  if (!r.ok) throw new Error(`models ${r.status}`);
+  return r.json();
+}
+
+export async function selectModel(path: string): Promise<{ ok: boolean; error?: string; note?: string }> {
+  const r = await fetch(`${CONTROLLER}/models/select`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  return r.json();
+}

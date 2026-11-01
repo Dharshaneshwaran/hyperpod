@@ -540,3 +540,51 @@ textarea:focus { border-color: var(--primary); }
   font-variant-numeric: tabular-nums;
 }
 .seg button.on .seg-size { background: var(--primary-soft); color: var(--primary); }
+
+/* ---------- big-tier model picker ---------- */
+.models-card { margin-top: var(--spacing-element); }
+.model-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+
+.model-row {
+  display: grid;
+  grid-template-columns: 20px minmax(180px, 1fr) 72px 74px minmax(0, 1.6fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+.model-row:hover:not(:disabled) { background: var(--muted-bg); }
+.model-row:disabled { cursor: progress; opacity: 0.7; }
+.model-row.on { border-color: var(--primary); background: var(--primary-soft); }
+
+.model-pick { display: grid; place-items: center; color: var(--primary); }
+.model-dot {
+  width: 11px; height: 11px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-full);
+}
+.model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-size { text-align: right; font-size: 13px; }
+.model-reason { font-size: 12px; color: var(--muted); }
+
+/* The verdict. Deliberately worded, not colour alone, so it survives being
+   read without colour. */
+.fit {
+  justify-self: start;
+  font-size: 11.5px; font-weight: 600;
+  padding: 2px 7px; border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+.fit-fits { color: var(--success); background: oklch(0.55 0.17 155 / 0.12); }
+.fit-tight { color: var(--warning); background: oklch(0.7 0.18 70 / 0.14); }
+.fit-too-large { color: var(--destructive); background: oklch(0.55 0.22 25 / 0.1); }
+.fit-unknown { color: var(--muted); background: var(--muted-bg); }
+
+.models-foot { margin: 10px 0 0; font-size: 12px; line-height: 1.5; }

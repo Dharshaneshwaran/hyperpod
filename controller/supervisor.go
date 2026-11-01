@@ -642,3 +642,30 @@ func (s *supervisor) completionAt(ctx context.Context, base, prompt string, nPre
 	}
 	return strings.TrimSpace(out.Choices[0].Message.Content), out.Choices[0].FinishReason, nil
 }
+
+// modelPath returns the GGUF the big tier is configured to serve.
+func (s *supervisor) modelPath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.model
+}
+
+// setModelPath switches the big-tier model and stops the running pipeline so the
+// next inference loads the new file. Stopping rather than reloading immediately
+// keeps the cost where the user expects it: a prompt, not a settings change.
+func (s *supervisor) setModelPath(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.model == path {
+		return
+	}
+	s.model = path
+	if s.running {
+		s.stopLocked()
+	}
+	// Placement belongs to the model that was loaded, so it must not persist.
+	s.placement = nil
+	s.offloaded = ""
+	s.tensorSplit = ""
+	s.splitWeightsMiB = nil
+}

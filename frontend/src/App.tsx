@@ -19,7 +19,10 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { settle } from "@lucasmarkes/hairline";
-import { CONTROLLER, fetchPipeline, fetchStatus, infer, type Pipeline, type Worker } from "./api";
+import {
+  CONTROLLER, fetchModels, fetchPipeline, fetchStatus, infer, selectModel,
+  type ModelsResp, type Pipeline, type Worker,
+} from "./api";
 import "./App.css";
 
 type Page = "overview" | "nodes" | "playground";
@@ -88,6 +91,8 @@ export default function App() {
   const [truncated, setTruncated] = useState(false);
   const [placement, setPlacement] = useState("");
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
+  const [models, setModels] = useState<ModelsResp | null>(null);
+  const [switching, setSwitching] = useState("");
   const [elapsed, setElapsed] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -104,6 +109,7 @@ export default function App() {
   const refresh = useCallback(async () => {
     try {
       const list = await fetchStatus();
+      fetchModels().then(setModels).catch(() => setModels(null));
       for (const w of list) {
         if (!seen.current.has(w.worker_id)) {
           seen.current.add(w.worker_id);
@@ -386,6 +392,66 @@ export default function App() {
                       );
                     })}
                   </svg>
+                )}
+              </section>
+
+              <section className="card models-card">
+                <div className="card-head">
+                  <h2>Big-tier model</h2>
+                  <span className="muted">
+                    {models?.measured_capacity_mib != null
+                      ? `${models.measured_capacity_mib.toLocaleString()} MiB measured free across the pool`
+                      : "capacity not measured"}
+                  </span>
+                </div>
+
+                {!models?.ok ? (
+                  <p className="empty">{models?.error ?? "Loading the catalogue…"}</p>
+                ) : (
+                  <>
+                    <div className="model-list">
+                      {(models.models ?? []).map((m) => (
+                        <button
+                          key={m.path}
+                          className={`model-row ${m.selected ? "on" : ""}`}
+                          onClick={async () => {
+                            if (m.selected || switching) return;
+                            setSwitching(m.path);
+                            try {
+                              await selectModel(m.path);
+                              setModels(await fetchModels());
+                              setPipeline(await fetchPipeline());
+                            } finally {
+                              setSwitching("");
+                            }
+                          }}
+                          disabled={switching !== ""}
+                          aria-pressed={m.selected}
+                        >
+                          <span className="model-pick">
+                            {m.selected ? <IconCircleCheck size={15} /> : <span className="model-dot" />}
+                          </span>
+                          <span className="model-name mono">{m.name}</span>
+                          <span className="model-size num">{(m.bytes / 1e9).toFixed(2)} GB</span>
+                          <span className={`fit fit-${m.fit.replace(" ", "-")}`}>{m.fit}</span>
+                          <span className="model-reason">
+                            {switching === m.path ? "switching…" : m.reason}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <p className="models-foot muted">
+                      Counted: {models.contributors?.length ? models.contributors.join(" · ") : "nothing"}.
+                      {" "}Reserve {models.reserve_mib} MiB per device.
+                      {models.unmeasured?.length ? (
+                        <>
+                          {" "}Not counted: {models.unmeasured.join(" · ")} — so these verdicts are a
+                          lower bound.
+                        </>
+                      ) : null}
+                    </p>
+                  </>
                 )}
               </section>
 

@@ -481,6 +481,8 @@ func main() {
 	mux.HandleFunc("POST /infer", s.handleInfer)
 	mux.HandleFunc("GET /status", s.handleStatus)
 	mux.HandleFunc("GET /pipeline", s.handlePipeline)
+	mux.HandleFunc("GET /models", s.handleModels)
+	mux.HandleFunc("POST /models/select", s.handleSelectModel)
 
 	log.Printf("HyperPod controller listening on %s", addr)
 	if err := http.ListenAndServe(addr, withCORS(mux)); err != nil {
@@ -501,4 +503,17 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// describeEndpoint names the worker behind an RPC endpoint, for figures that
+// have to be auditable by a reader rather than only correct.
+func (r *registry) describeEndpoint(endpoint string) (label, gpu string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, w := range r.workers {
+		if w.RPCAddr == endpoint {
+			return strings.TrimPrefix(w.ID, "worker-"), w.GPU
+		}
+	}
+	return endpoint, "unknown device"
 }
